@@ -1,7 +1,11 @@
-# baseline_ (easyPlace) 代码评估报告
+# easyPlace（参考基准）代码评估报告
 
-> 评估对象：`baseline_/` —— **easyPlace**，上海科技大学 Ziang Ge / Yikai Liu 在 Pingqiang Zhou
+> 评估对象：**easyPlace** —— 上海科技大学 Ziang Ge / Yikai Liu 在 Pingqiang Zhou
 > 教授指导下完成的 ePlace / ePlace-MS 重实现。
+>
+> **代码位置**：`~/easyPlace`（即 `/home/friedrichc/easyPlace`，**位于本项目目录之外**）。
+> 早期曾置于项目内的 `baseline_/`，为避免 CMake 误抓、头文件重名、编辑器索引混乱与打包
+> 误带等问题已移出。**本文中形如 `EPlace/eplace.cpp:127` 的引用，路径均相对于 `~/easyPlace/`。**
 >
 > 评估目的：判断该项目是否已良好覆盖本课程要求的全部开发任务，并识别可优化点。
 >
@@ -447,7 +451,8 @@ bool localSmooth = false;  //! local smooth is applied only to std cells, is thi
 - AoS 结构 + 零并行 + 每轮重建 FFT，决定了它跑不快，而这正是我们架构要改进的方向；
 - 无合法性检查，结果无从验证。
 
-> 另外 `baseline_/` 已在 `.gitignore` 中，本项目应独立实现，不直接复用其代码。
+> 另外 easyPlace 已移出项目目录（现位于 `~/easyPlace`），`.gitignore` 中保留 `baseline_/`
+> 条目作为护栏。本项目应独立实现，不直接复用其代码。
 
 ### 6.2 必须自建的部分
 

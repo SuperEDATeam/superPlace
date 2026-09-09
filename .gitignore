@@ -1,2 +1,6 @@
 pdf/
+test_data/
+
+# 参考实现 easyPlace 已移至 ~/easyPlace（项目目录之外）
+# 此条保留作为护栏，防止日后误将其放回项目内
 baseline_/

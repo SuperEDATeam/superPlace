@@ -1,0 +1,172 @@
+================================================================================
+superPlace  环境依赖清单
+================================================================================
+
+记录本项目需要额外安装的包与环境。仓库自带的依赖、系统已有的依赖也一并列出，
+以便区分「必须装什么」和「不用管什么」。
+
+验证环境：Ubuntu 24.04.1 LTS on WSL2 (kernel 5.15.153.1-microsoft-standard-WSL2)
+最后更新：2026-09-10（M1 完成时）
+
+
+================================================================================
+一、一键安装（当前项目全部所需）
+================================================================================
+
+    sudo apt update
+    sudo apt install -y \
+        pkgconf libpng-dev libeigen3-dev libfftw3-dev \
+        ninja-build ccache \
+        python3-numpy python3-matplotlib python3-pil
+
+合计新增磁盘占用约 70 MB。
+
+注意：Ubuntu 24.04 启用了 PEP 668，Python 包必须走 apt，不能用 pip 装到系统环境，
+      否则报 externally-managed-environment。
+
+
+================================================================================
+二、C++ 构建依赖（必装）
+================================================================================
+
+包名              版本      体积      用途
+--------------------------------------------------------------------------------
+pkgconf           1.8.1     0.1 MB    CMake find_package / pkg_check_modules 的基础
+libpng-dev        1.6.43    0.7 MB    可视化 PNG 输出（src/plot/png_writer.cpp）
+libeigen3-dev     3.4.0     8.7 MB    稀疏矩阵 + BiCGSTAB，M2 二次解析布局
+libfftw3-dev      3.3.10   15.5 MB    DCT / 泊松求解，M2' 与 M3 的 ePlace 密度项
+                                      （CMake 优先用单精度 fftw3f，与 float 数据一致）
+
+构建加速（强烈建议，非必须）
+--------------------------------------------------------------------------------
+ninja-build       1.11.1    0.3 MB    比 make 更快的构建后端
+ccache            4.9.1     1.5 MB    编译缓存。CImg.h 有 2.9 MB，重复编译代价明显；
+                                      实测命中率 92%，全量重建从 ~14s 降到 ~4.5s。
+                                      CMake 会自动检测并启用，无需配置。
+
+
+================================================================================
+三、Python 依赖（分析脚本用）
+================================================================================
+
+包名                  版本      体积      用途
+--------------------------------------------------------------------------------
+python3-numpy         1.26.4   22.8 MB   scripts/ 下的数据处理
+python3-matplotlib    3.6.3    18.8 MB   scripts/plot_convergence.py 收敛曲线
+python3-pil (Pillow)  10.2.0    1.7 MB   scripts/make_gif.py 合成收敛动画
+
+说明：这三个包只服务于辅助分析脚本，不进入布局器的正确性链路，版本差异无影响。
+      若将来需要严格锁版本，可改用项目内 venv：
+
+          python3 -m venv .venv && source .venv/bin/activate
+          pip install numpy matplotlib pillow && pip freeze > requirements.txt
+
+
+================================================================================
+四、已随仓库提供（vendor），无需安装
+================================================================================
+
+third_party/CImg.h                 cimg_version 234    2.9 MB
+    图像绘制。课程任务 6 明确要求使用 CImg。
+    编译时以 cimg_display=0 关闭显示后端，因此不依赖 X11，纯文件 IO。
+    仅用到 draw_rectangle / draw_text，实际 PNG 落盘走 libpng。
+
+third_party/nlohmann/json.hpp      3.11.3              0.9 MB
+    JSON 配置解析（configs/*.json）。
+
+这两个文件是有意提交进仓库的（见 .gitignore 内的说明），
+目的是让队友 clone 后无需任何额外操作即可编译。
+
+
+================================================================================
+五、系统已自带，无需安装
+================================================================================
+
+g++          13.3.0     C++17 编译器，OpenMP 4.5 随附
+cmake        3.28.3     构建系统（项目要求 >= 3.20）
+zlib         1.3        libpng 的传递依赖
+python3      3.12.3
+git
+
+CUDA 工具链（M7 用，已就绪，无需安装）
+--------------------------------------------------------------------------------
+nvcc         V12.6.85   /usr/local/cuda/bin/nvcc
+驱动         560.94     WSL2 直通
+GPU          NVIDIA GeForce RTX 4060 Laptop，8 GB
+架构         Ada Lovelace = sm_89（CMakeLists 中 CMAKE_CUDA_ARCHITECTURES 已设为 89）
+
+
+================================================================================
+六、后续里程碑的可选依赖（用到时再装）
+================================================================================
+
+M4 · GDSII 结果查看
+--------------------------------------------------------------------------------
+    sudo apt install -y klayout          # 约 200 MB+
+
+    仅用于人工验收 GDSII 输出是否分层正确，不是构建依赖。
+
+调试与代码质量
+--------------------------------------------------------------------------------
+    sudo apt install -y gdb clang-format clang-tidy
+
+    clang-format / clang-tidy 用于落地 05 开发执行规范 §6 的编码约定。
+
+GUI 查看器（可选支线，见 01 设计文档 §7）
+--------------------------------------------------------------------------------
+    sudo apt install -y libglfw3-dev libgl1-mesa-dev \
+                        libx11-dev libxrandr-dev libxinerama-dev \
+                        libxcursor-dev libxi-dev
+
+    仅当决定实现 ImGui 交互式查看器时才需要。
+
+
+================================================================================
+七、WSL2 特有注意事项
+================================================================================
+
+图形加速（只有做 GUI 查看器时才相关）
+--------------------------------------------------------------------------------
+WSLg 默认使用 llvmpipe 软件渲染（Accelerated: no），画 21 万个矩形会卡。
+本机其实有 RTX 4060 且 mesa 的 d3d12 驱动已安装，只是没被选为默认。
+启用硬件加速：
+
+    export GALLIUM_DRIVER=d3d12
+
+    验证：glxinfo -B | grep -E "Device|Accelerated"
+    期望：Device: D3D12 (NVIDIA GeForce RTX 4060 Laptop GPU) / Accelerated: yes
+
+建议写进 ~/.bashrc。注意 glxinfo 需要 mesa-utils（sudo apt install mesa-utils）。
+
+命令行输出编码
+--------------------------------------------------------------------------------
+通过 python.exe 调用 Windows 侧 Python 时，stdout 是 GBK 编码，
+打印 emoji 会抛 UnicodeEncodeError。本项目脚本一律用 WSL 内的 python3。
+
+
+================================================================================
+八、安装后验证
+================================================================================
+
+    cd /home/friedrichc/Placement
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build
+    cd build && ctest --output-on-failure
+
+期望的 CMake 配置输出应包含：
+
+    -- ccache enabled: /usr/bin/ccache
+    -- Found OpenMP_CXX: -fopenmp (found version "4.5")
+    -- Found PNG: ... (found version "1.6.43")
+    -- FFTW3 (single precision) found: 3.3.10
+
+期望测试结果：100% tests passed, 0 tests failed out of 3
+
+端到端验证：
+
+    ./build/superplace-cli --aux test_data/adaptec1/adaptec1.aux \
+                           --config configs/default.json --out results
+
+应在 results/adaptec1/ 下产出 .pl、metrics.csv、summary.json、plots/parse.png，
+且 DATABASE SUMMARY 中的 21 项统计数字与课程基准逐项一致
+（详见 work_report/05-开发执行规范.md §5.1.4）。

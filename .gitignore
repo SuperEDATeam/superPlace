@@ -4,3 +4,14 @@ test_data/
 # 参考实现 easyPlace 已移至 ~/easyPlace（项目目录之外）
 # 此条保留作为护栏，防止日后误将其放回项目内
 baseline_/
+
+# 构建与运行产物
+build/
+results/
+compile_commands.json
+
+# 大规模 benchmark（体积大，见 work_report/04）
+benchmarks/
+
+# 注意：third_party/ 下的 CImg.h 与 nlohmann/json.hpp 是【有意提交】的。
+# vendor 它们的目的就是让队友 clone 后无需任何 apt 操作即可编译（05 §2.2）。

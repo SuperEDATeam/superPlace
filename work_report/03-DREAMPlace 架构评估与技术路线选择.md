@@ -4,7 +4,7 @@
 >
 > - **DREAMPlace** — [limbo018/DREAMPlace：支持深度学习工具包的VLSI部署](https://github.com/limbo018/DREAMPlace)  
 > 论文：[DREAMPlace | Proceedings of the 56th Annual Design Automation Conference 2019](https://dl.acm.org/doi/10.1145/3316781.3317803)
-> - **OpenROAD** [The-OpenROAD-Project/OpenROAD: OpenROAD's unified application implementing an RTL-to-GDS Flow. Documentation at https://openroad.readthedocs.io/en/latest/h](https://github.com/The-OpenROAD-Project/OpenROAD)
+> - **OpenROAD** `gpl`  ****[The-OpenROAD-Project/OpenROAD: OpenROAD's unified application implementing an RTL-to-GDS Flow. Documentation at https://openroad.readthedocs.io/en/latest/h](https://github.com/The-OpenROAD-Project/OpenROAD)
 >
 > 评估目的：判断"tensor + kernel + CUDA"架构是否适合本课程设计项目，
 > 并识别与既有设计文档（[01-架构设计与技术选型](01-架构设计与技术选型.md)）的冲突点。

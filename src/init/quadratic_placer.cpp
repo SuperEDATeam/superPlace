@@ -88,10 +88,13 @@ void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boun
 template <Axis A>
 float solveAxis(PlaceDB& db, const Config& cfg, const std::vector<int>& boundMin,
                 const std::vector<int>& boundMax, SpMat& mat, VecXf& rhs, VecXf& sol,
-                std::vector<Triplet>& triplets) {
+                std::vector<Triplet>& triplets, double* tAssemble, double* tSolve) {
+    Timer tA;
     assemble<A>(db, cfg, boundMin, boundMax, mat, rhs, triplets);
+    *tAssemble += tA.elapsedMs();
+    Timer tS;
 
-    Eigen::BiCGSTAB<SpMat, Eigen::IdentityPreconditioner> solver;
+    Eigen::BiCGSTAB<SpMat, Eigen::DiagonalPreconditioner<float>> solver;
     solver.setMaxIterations(cfg.qp_solver_max_iter);
     solver.setTolerance(cfg.qp_tol);
     solver.compute(mat);
@@ -109,6 +112,7 @@ float solveAxis(PlaceDB& db, const Config& cfg, const std::vector<int>& boundMin
         AxisTraits<A>::setNodePos(db, i, v);
         sol[i] = v;
     }
+    *tSolve += tS.elapsedMs();
     const float err = solver.error();
     return std::isfinite(err) ? err : 0.f;
 }
@@ -154,12 +158,17 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         Timer iterTimer;
 
         // 权重依赖当前位置，故每轮都要重算边界引脚
+        Timer tB;
         computeNetBoundPins(db, bMinX, bMaxX, bMinY, bMaxY);
+        const double tBounds = tB.elapsedMs();
 
-        const float errX = solveAxis<Axis::X>(db, cfg, bMinX, bMaxX, matX, rhsX, solX, triplets);
-        const float errY = solveAxis<Axis::Y>(db, cfg, bMinY, bMaxY, matY, rhsY, solY, triplets);
+        double tAsm = 0.0, tSol = 0.0;
+        const float errX = solveAxis<Axis::X>(db, cfg, bMinX, bMaxX, matX, rhsX, solX, triplets, &tAsm, &tSol);
+        const float errY = solveAxis<Axis::Y>(db, cfg, bMinY, bMaxY, matY, rhsY, solY, triplets, &tAsm, &tSol);
 
+        Timer tH;
         const double hpwl = computeHPWL(db);
+        const double tHpwl = tH.elapsedMs();
 
         IterMetrics m;
         m.iter = iter;
@@ -167,8 +176,8 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         m.grad_norm_wl = std::max(errX, errY);
         m.elapsed_ms = iterTimer.elapsedMs();
         sink.push(m);
-        SP_INFO("  qp iter %3d: err %.3e  HPWL %.6g  (%.1f ms)", iter, std::max(errX, errY), hpwl,
-                m.elapsed_ms);
+        SP_INFO("  qp iter %3d: err %.3e  HPWL %.6g  (%.0f ms = bounds %.0f + assemble %.0f + solve %.0f + hpwl %.0f)",
+                iter, std::max(errX, errY), hpwl, m.elapsed_ms, tBounds, tAsm, tSol, tHpwl);
 
         const bool converged = (errX < cfg.qp_tol && errY < cfg.qp_tol && iter > 4);
         const bool stalled = (iter > 4 && lastHpwl > 0.0 &&

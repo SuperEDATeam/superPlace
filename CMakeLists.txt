@@ -50,7 +50,9 @@ set(SUPERPLACE_SOURCES
     src/util/metrics.cpp
     src/init/initial_placer.cpp
     src/init/random_placer.cpp
-    src/init/cluster_placer.cpp
+    src/init/cluster_common.cpp
+    src/init/cluster_fc.cpp
+    src/init/cluster_bc.cpp
     src/init/quadratic_placer.cpp
     src/stages/parse_stage.cpp
     src/stages/init_stage.cpp

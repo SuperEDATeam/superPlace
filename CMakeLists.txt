@@ -40,13 +40,20 @@ endif()
 set(SUPERPLACE_SOURCES
     src/db/place_db.cpp
     src/db/db_stats.cpp
+    src/db/hpwl.cpp
     src/io/bookshelf_reader.cpp
     src/io/bookshelf_writer.cpp
+    src/numeric/cpu/cpu_poisson.cpp
     src/plot/png_writer.cpp
     src/plot/cimg_renderer.cpp
     src/util/config.cpp
     src/util/metrics.cpp
+    src/init/initial_placer.cpp
+    src/init/random_placer.cpp
+    src/init/cluster_placer.cpp
+    src/init/quadratic_placer.cpp
     src/stages/parse_stage.cpp
+    src/stages/init_stage.cpp
 )
 
 add_library(superplace STATIC ${SUPERPLACE_SOURCES})

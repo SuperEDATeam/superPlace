@@ -43,6 +43,7 @@ std::string Config::usage() {
         "  --config <path>     JSON config file\n"
         "  --out <dir>         Output directory (default: results)\n"
         "  --stage <list>      Comma-separated stages to run (default: parse)\n"
+        "  --init-method <m>   random | cluster_fc | cluster_bc | quadratic\n"
         "  --seed <n>          Random seed (default: 1002)\n"
         "  --threads <n>       OpenMP thread count (0 = auto)\n"
         "  --no-plot           Disable image output\n"
@@ -81,7 +82,12 @@ void Config::loadJson(const std::string& path) {
     get("gp_max_iter", gp_max_iter);
     get("qp_max_iter", qp_max_iter);
     get("qp_min_distance", qp_min_distance);
+    get("qp_tol", qp_tol);
+    get("qp_solver_max_iter", qp_solver_max_iter);
     get("ignore_net_degree", ignore_net_degree);
+    get("init_method", init_method);
+    get("cluster_target_count", cluster_target_count);
+    get("density_stat_dim", density_stat_dim);
     if (j.contains("stages")) stages = j.at("stages").get<std::vector<std::string>>();
     if (j.contains("aux_path") && aux_path.empty()) aux_path = j.at("aux_path").get<std::string>();
 }
@@ -106,6 +112,8 @@ Config Config::fromArgs(int argc, char** argv) {
             pendingConfig = need(i, "--config"); ++i;
         } else if (a == "--out") {
             cfg.out_dir = need(i, "--out");     ++i; cliSet.insert("out_dir");
+        } else if (a == "--init-method") {
+            cfg.init_method = need(i, "--init-method"); ++i; cliSet.insert("init_method");
         } else if (a == "--stage") {
             cfg.stages = splitComma(need(i, "--stage")); ++i; cliSet.insert("stages");
         } else if (a == "--seed") {
@@ -136,6 +144,7 @@ Config Config::fromArgs(int argc, char** argv) {
         if (cliSet.count("full_plot"))    fromFile.full_plot    = cfg.full_plot;
         if (cliSet.count("verbose"))      fromFile.verbose      = cfg.verbose;
         if (cliSet.count("aux_path"))     fromFile.aux_path     = cfg.aux_path;
+        if (cliSet.count("init_method"))  fromFile.init_method  = cfg.init_method;
         cfg = fromFile;
     }
 

@@ -4,7 +4,7 @@
 >
 > - **DREAMPlace** — [limbo018/DREAMPlace：支持深度学习工具包的VLSI部署](https://github.com/limbo018/DREAMPlace)  
 > 论文：[DREAMPlace | Proceedings of the 56th Annual Design Automation Conference 2019](https://dl.acm.org/doi/10.1145/3316781.3317803)
-> - **OpenROAD** `gpl`  ****[The-OpenROAD-Project/OpenROAD: OpenROAD's unified application implementing an RTL-to-GDS Flow. Documentation at https://openroad.readthedocs.io/en/latest/h](https://github.com/The-OpenROAD-Project/OpenROAD)
+> - **OpenROAD** `gpl`  [The-OpenROAD-Project/OpenROAD: OpenROAD's unified application implementing an RTL-to-GDS Flow. Documentation at https://openroad.readthedocs.io/en/latest/h](https://github.com/The-OpenROAD-Project/OpenROAD)
 >
 > 评估目的：判断"tensor + kernel + CUDA"架构是否适合本课程设计项目，
 > 并识别与既有设计文档（[01-架构设计与技术选型](01-架构设计与技术选型.md)）的冲突点。
@@ -12,6 +12,8 @@
 > 撰写日期：2026-09-09
 
 ---
+
+
 
 ## 0. 结论摘要
 
@@ -717,52 +719,4 @@ std::unique_ptr<PoissonBackend> makePoissonBackend(const BackendConfig& cfg);
 
 
 ---
-
-
-
-## 7. 对设计文档的修订建议
-
-以下修订**已于 2026-09-09 全部执行**到 [01-架构设计与技术选型](01-架构设计与技术选型.md)：
-
-
-| 章节        | 修订内容                                                        | 状态   |
-| --------- | ----------------------------------------------------------- | ---- |
-| §3.1 架构图  | 数值内核层补充 Backend Strategy 抽象                                 | ✅ 已改 |
-| §4 决策 3   | 改为**纯 SoA + CSR + 句柄视图**，不保留 AoS 副本                         | ✅ 已改 |
-| §4 新增决策 7 | **数值内核采用 Backend Strategy 模式**，附 `PoissonBackend` 接口示例      | ✅ 已加 |
-| §4 新增决策 8 | **优化器通过** `obj_and_grad_fn` **契约解耦**，使 Nesterov/Adam/CG 可插拔 | ✅ 已加 |
-| §5.1 目录结构 | `numeric/` 下区分 `*_backend.h`（接口）与 `cpu/`、`cuda/`（实现）        | ✅ 已改 |
-| §2.2 可复现性 | 补充确定性要求：per-thread 局部网格 + 固定顺序规约；GPU 后端不保证逐位一致              | ✅ 已改 |
-| §8 演进节奏   | M3 补充三层嵌套调度；新增 M6（大规模 benchmark）与 M7（CUDA 泊松求解器）            | ✅ 已改 |
-| §9 依赖     | 记录 CUDA 12.6 + RTX 4060 已就绪；补充 benchmark 获取清单               | ✅ 已改 |
-
-
----
-
-
-
-## 附：本次评估的关键证据索引
-
-
-| 结论                      | 证据位置                                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------- |
-| DREAMPlace 纯 SoA        | `DREAMPlace/dreamplace/PlaceDB.py:44-54`                                                    |
-| 超图 CSR 扁平化              | `DREAMPlace/dreamplace/PlaceDB.py:61-69`                                                    |
-| CPU/CUDA 运行时分派          | `DREAMPlace/dreamplace/ops/electric_potential/electric_potential.py` backward               |
-| CUDA 编译期门控              | `DREAMPlace/dreamplace/ops/electric_potential/electric_potential.py:34`；`CMakeLists.txt:86` |
-| 手写解析梯度（非 autodiff）      | 同上 backward 返回 `-electric_force(...)`                                                       |
-| 优化器契约                   | `DREAMPlace/dreamplace/NesterovAcceleratedGradientOptimizer.py:23`                          |
-| 优化器可插拔                  | `DREAMPlace/dreamplace/NonLinearPlace.py:173-213`                                           |
-| 三层嵌套调度                  | `DREAMPlace/dreamplace/NonLinearPlace.py:286,329,358`                                       |
-| GPU 确定性问题               | `deterministic_flag` 参数 + `ops/*_atomic` 系列实现                                               |
-| OpenROAD Backend 抽象     | `OpenROAD/src/gpl/src/fftBackend.h`（及 `densityGradient/wirelengthGradient/hpwl` 三个同构头）      |
-| OpenROAD GPU 实现         | `OpenROAD/src/gpl/src/gpu/`（Kokkos，非裸 CUDA）                                                 |
-| 本机 CUDA 就绪              | `nvcc` release 12.6 V12.6.85；`nvidia-smi` RTX 4060 8GB                                      |
-| **现有 benchmark 无可移动宏**  | `test_data/{adaptec1,adaptec4,thin1}/*.nodes` 统计：非 terminal 且高度 ≠ 12 的单元数均为 **0**           |
-| easyPlace 三阶段在现有数据上是死代码 | `easyPlace/main/ePlace_main.cpp:130` 的 `if (placedb->dbMacroCount > 0 && ...)`              |
-| DREAMPlace 支持 MMS       | `DREAMPlace/test/mms/` 下 16 个 json 配置（adaptec1-5 / bigblue1-4 / newblue1-7）                 |
-| DREAMPlace 加速比声明        | `DREAMPlace/README.md:6-7`：全局布局+合法化相对 RePlAce **>30X**（V100）；ABCDPlace 详细布局 ~16X            |
-| ISPD2005/2006 规模数据      | ISPD 官方竞赛页与 Nam（IBM）竞赛总结；MMS 出处 Yan/Viswanathan/Chu, DAC 2009                               |
-| MMS 重建版获取               | IEEE DataPort，DOI `10.21227/2n68-tx57`（原 iastate 站点已失效）                                     |
-
 

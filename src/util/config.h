@@ -30,12 +30,24 @@ struct Config {
     int  plot_margin   = 30;
     bool plot_fillers  = false;
 
-    // ------------------------------------------------- 后续里程碑参数（M1 未使用）
+    // ---------------------------------------------------------- 初始布局（M2）
+    /// random | cluster_fc | cluster_bc | quadratic
+    std::string init_method = "quadratic";
+    /// 聚类目标簇数；<=0 表示按每簇约 25 个单元自动推算
+    int   cluster_target_count = 0;
+    /// 密度统计网格维度（任务 4 的「面积控制」维度）
+    int   density_stat_dim = 64;
+
+    // 二次解析布局
+    int   qp_max_iter        = 20;    // 外层迭代（权重依赖位置，须迭代）
+    float qp_tol             = 1e-6f; // BiCGSTAB 残差阈值
+    int   qp_solver_max_iter = 100;   // 单次 BiCGSTAB 上限
+    float qp_min_distance    = 1.0f;  // 权重分母下限，防止奇异
+
+    // ------------------------------------------------- 后续里程碑参数（M3 起使用）
     float target_density   = 1.0f;
     float target_overflow  = 0.10f;
     int   gp_max_iter      = 1000;
-    int   qp_max_iter      = 20;
-    float qp_min_distance  = 1.0f;
     int   ignore_net_degree = 100;
 
     /// 从命令行构造。会先读 --config 指向的 JSON，再让 CLI 参数覆盖。

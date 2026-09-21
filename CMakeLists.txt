@@ -95,6 +95,11 @@ add_executable(superplace-cli src/main.cpp)
 target_link_libraries(superplace-cli PRIVATE superplace)
 target_compile_options(superplace-cli PRIVATE -Wall -Wextra)
 
+# 课堂测试 1 的专用输出工具：独立二进制，不影响 superplace-cli 的任何行为
+add_executable(superplace-quiz tools/quiz/main.cpp)
+target_link_libraries(superplace-quiz PRIVATE superplace)
+target_compile_options(superplace-quiz PRIVATE -Wall -Wextra)
+
 # ------------------------------------------------------------------------ tests
 enable_testing()
 add_subdirectory(test)

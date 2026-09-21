@@ -4,6 +4,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 namespace sp {
 
@@ -50,6 +51,21 @@ struct DbStats {
                 degreeHistogram[3],
                 degreeHistogram[4]};
     }
+
+    /// 逐 degree 的原始计数，索引即 degree（0..kMaxTrackedDegree），
+    /// degreeOver 为 degree > kMaxTrackedDegree 的 net 数。
+    /// 有了它，任何分箱口径都能派生，不必为每种口径改动统计代码。
+    static constexpr int kMaxTrackedDegree = 100;
+    std::vector<int> degreeCount;   // 长度 kMaxTrackedDegree + 1
+    int degreeOver = 0;
+
+    /// 自然分箱（边界按字面理解，左右闭区间）：
+    ///   [deg==1, deg==2, 3..10, 11..100, >100]
+    /// 这是 awk 独立复算与课堂测试 1 所要求的口径。
+    std::array<int, 5> naturalBins() const;
+
+    /// 任意闭区间 [lo, hi] 内的 net 数；hi < 0 表示"直到无穷"。
+    int countDegreeRange(int lo, int hi) const;
 
     // 派生比例
     double cellAreaRatio() const { return coreArea > 0 ? movableArea / coreArea : 0.0; }

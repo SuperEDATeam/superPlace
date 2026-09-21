@@ -43,9 +43,15 @@ DbStats DbStats::compute(const PlaceDB& db) {
     s.netCount    = db.numNets;
     s.pinCount    = db.numPins;
 
+    s.degreeCount.assign(static_cast<size_t>(DbStats::kMaxTrackedDegree) + 1, 0);
     for (int k = 0; k < db.numNets; ++k) {
         const int deg = db.netDegree(k);
         s.maxNetDegree = std::max(s.maxNetDegree, deg);
+
+        // 原始计数：任何分箱口径都由它派生
+        if (deg <= DbStats::kMaxTrackedDegree) s.degreeCount[static_cast<size_t>(deg)]++;
+        else s.degreeOver++;
+
         if (deg == 1)                    s.degreeHistogram[0]++;
         else if (deg == 2)               s.degreeHistogram[1]++;
         else if (deg >= 3 && deg <= 9)   s.degreeHistogram[2]++;
@@ -54,6 +60,23 @@ DbStats DbStats::compute(const PlaceDB& db) {
     }
 
     return s;
+}
+
+int DbStats::countDegreeRange(int lo, int hi) const {
+    if (degreeCount.empty()) return 0;
+    int total = 0;
+    const int cap = (hi < 0 || hi > kMaxTrackedDegree) ? kMaxTrackedDegree : hi;
+    for (int d = std::max(0, lo); d <= cap; ++d) total += degreeCount[static_cast<size_t>(d)];
+    if (hi < 0 || hi > kMaxTrackedDegree) total += degreeOver;
+    return total;
+}
+
+std::array<int, 5> DbStats::naturalBins() const {
+    return {countDegreeRange(1, 1),
+            countDegreeRange(2, 2),
+            countDegreeRange(3, 10),
+            countDegreeRange(11, 100),
+            degreeOver};
 }
 
 std::string DbStats::toString() const {

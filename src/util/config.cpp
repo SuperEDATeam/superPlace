@@ -85,6 +85,7 @@ void Config::loadJson(const std::string& path) {
     get("delta_hpwl_ref", delta_hpwl_ref);
     get("use_bb", use_bb);
     get("filler_only_iters", filler_only_iters);
+    get("gp_stagnation_window", gp_stagnation_window);
     get("macro_sa_moves", macro_sa_moves);
     get("macro_sa_init_accept", macro_sa_init_accept);
     get("macro_sa_temp_ratio", macro_sa_temp_ratio);

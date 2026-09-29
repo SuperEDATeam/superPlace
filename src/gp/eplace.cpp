@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include "db/hpwl.h"
@@ -257,6 +258,21 @@ GpResult EPlace::run(GpStage stage) {
     double prevHpwl = 0.0;
     bool havePrev = false;
 
+    // 停滞保护。λ 调度（05 §5.5.9）是 ΔHPWL 的【速率】控制器，它会把 HPWL 的
+    // 增速稳定在 delta_hpwl_ref 上——但这条规则里没有任何一项写着"τ 不再改善就收手"。
+    // 在密排混合尺寸设计上，τ 会锁死在某个高于阈值的值，而 λ 继续上涨、HPWL
+    // 线性膨胀，优化器空转到迭代上限。
+    //
+    // 实测 MMS adaptec4（1329 个可移动宏）：第 700 轮起 τ 就钉在 0.1396 不动，
+    // 跑到第 3000 轮 τ 仍是 0.1398，HPWL 却从 1.83e8 涨到 9.80e8。跑得越久结果越差。
+    // 故记录 τ 最优时的解，停滞则回到它——与 mLG 保留最优解是同一个道理。
+    std::vector<float> bestPos = s.pos;
+    float  bestTau = std::numeric_limits<float>::infinity();
+    double bestHpwl = 0.0;
+    int    bestIter = -1;
+    int    sinceImprove = 0;
+    bool   stagnated = false;
+
     for (int iter = 0; iter < maxIter; ++iter) {
         opt->step(s.pos.data(), 2 * n);
 
@@ -305,6 +321,26 @@ GpResult EPlace::run(GpStage stage) {
             result.converged = true;
             break;
         }
+
+        if (stage != GpStage::kFillerOnly && cfg.gp_stagnation_window > 0) {
+            // 用相对量判"有改善"：τ 在 1e-4 级别的抖动不算进展
+            if (s.tau < bestTau * 0.999f) {
+                bestTau = s.tau;
+                bestHpwl = s.hpwl;
+                bestIter = iter;
+                bestPos = s.pos;
+                sinceImprove = 0;
+            } else if (++sinceImprove >= cfg.gp_stagnation_window) {
+                stagnated = true;
+                SP_WARN("%s: τ 连续 %d 轮无改善（停在 %.4f，最好 %.4f @ 第 %d 轮），"
+                        "判定停滞并回退到最优解", toString(stage), sinceImprove, s.tau, bestTau,
+                        bestIter);
+                SP_WARN("%s: 此刻 HPWL=%.6g，而最优解处 HPWL=%.6g —— 继续跑只会让线长"
+                        "单调膨胀而 τ 毫无改善", toString(stage), s.hpwl, bestHpwl);
+                s.pos = bestPos;
+                break;
+            }
+        }
     }
 
     // 优化器对外暴露的是"当前解" v，而求值点是前瞻点 u；循环里 db 停在 u 上，
@@ -321,6 +357,7 @@ GpResult EPlace::run(GpStage stage) {
     // 这个阶段的作用体现在它给 cGP 交付的密度场上，不在 τ 上。
     const char* verdict = (stage == GpStage::kFillerOnly) ? "（固定轮数，τ 不含 filler 故不变）"
                           : result.converged             ? "（达标）"
+                          : stagnated                    ? "（τ 停滞，已回退到最优解）"
                                                          : "（耗尽迭代上限）";
     SP_INFO("%s 结束：%d 轮，HPWL=%.6g，τ=%.4f%s", toString(stage), result.iterations, result.hpwl,
             result.overflow, verdict);

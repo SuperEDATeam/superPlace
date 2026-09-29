@@ -26,6 +26,7 @@
   "delta_hpwl_ref": 350000.0,
   "use_bb": true,
   "filler_only_iters": 20,
+  "gp_stagnation_window": 200,
 
   "macro_sa_moves": 0,
   "macro_sa_init_accept": 0.9,

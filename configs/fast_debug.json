@@ -1,0 +1,25 @@
+{
+  "_comment": "快速冒烟配置：迭代数砍到 1/10，用于改完代码先确认没崩、没 NaN、没发散。不要用它的 HPWL 下结论。",
+
+  "out_dir": "results",
+  "stages": ["parse", "init", "gp"],
+
+  "random_seed": 1002,
+  "verbose": true,
+
+  "plot": true,
+  "full_plot": true,
+  "plot_interval": 5,
+  "plot_min_side": 500,
+
+  "init_method": "quadratic",
+  "qp_max_iter": 5,
+
+  "target_density": 1.0,
+  "target_overflow": 0.10,
+  "cgp_target_overflow": 0.07,
+  "gp_max_iter": 100,
+  "filler_only_iters": 5,
+
+  "macro_sa_moves": 20000
+}

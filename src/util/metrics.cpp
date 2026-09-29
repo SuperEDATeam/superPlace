@@ -20,19 +20,31 @@ void MetricsSink::setOutputDir(const std::string& dir) {
 }
 
 void MetricsSink::beginStage(const std::string& stage) {
-    cur_stage_ = stage;
+    stage_stack_.push_back(stage);
     stages_.emplace_back(stage, std::vector<IterMetrics>{});
 }
 
 void MetricsSink::push(const IterMetrics& m) {
-    if (stages_.empty()) beginStage("unnamed");
+    if (stage_stack_.empty()) beginStage("unnamed");
+    // 定位到栈顶阶段对应的那组。不能直接用 stages_.back()——子阶段结束后它仍是
+    // 子阶段那一组，此时外层阶段再 push 会把数据记到已结束的子阶段名下。
+    const std::string& cur = stage_stack_.back();
+    for (auto it = stages_.rbegin(); it != stages_.rend(); ++it) {
+        if (it->first == cur) {
+            it->second.push_back(m);
+            return;
+        }
+    }
+    beginStage(cur);
     stages_.back().second.push_back(m);
 }
 
 void MetricsSink::endStage(double elapsed_ms) {
-    if (!cur_stage_.empty()) durations_[cur_stage_] = elapsed_ms;
+    if (!stage_stack_.empty()) {
+        durations_[stage_stack_.back()] = elapsed_ms;
+        stage_stack_.pop_back();
+    }
     flushStageCsv();
-    cur_stage_.clear();
 }
 
 void MetricsSink::recordDuration(const std::string& label, double ms) {

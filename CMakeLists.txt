@@ -44,10 +44,16 @@ set(SUPERPLACE_SOURCES
     src/io/bookshelf_reader.cpp
     src/io/bookshelf_writer.cpp
     src/numeric/cpu/cpu_poisson.cpp
+    src/numeric/cpu/nesterov.cpp
     src/plot/png_writer.cpp
     src/plot/cimg_renderer.cpp
     src/util/config.cpp
     src/util/metrics.cpp
+    src/gp/bin_grid.cpp
+    src/gp/filler.cpp
+    src/gp/eplace.cpp
+    src/lg/macro_sa.cpp
+    src/gp/wa_wirelength.cpp
     src/init/initial_placer.cpp
     src/init/random_placer.cpp
     src/init/cluster_common.cpp
@@ -56,6 +62,7 @@ set(SUPERPLACE_SOURCES
     src/init/quadratic_placer.cpp
     src/stages/parse_stage.cpp
     src/stages/init_stage.cpp
+    src/stages/gp_stage.cpp
 )
 
 add_library(superplace STATIC ${SUPERPLACE_SOURCES})

@@ -68,6 +68,8 @@ void PlaceDB::finalizeCSR(const std::vector<int>& pinNet) {
     assert(static_cast<int>(pinNet.size()) == numPins);
     assert(static_cast<int>(pin2node.size()) == numPins);
 
+    pin2net = pinNet;   // 反查表：多个模块（线长梯度、聚类）都需要
+
     // ---- net -> pin：两趟法（计数 -> 前缀和 -> 填充），禁止中间 vector<vector>
     net2pin_start.assign(numNets + 1, 0);
     for (int p = 0; p < numPins; ++p) net2pin_start[pinNet[p] + 1]++;

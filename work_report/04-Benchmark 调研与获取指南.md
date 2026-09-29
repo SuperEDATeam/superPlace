@@ -287,7 +287,7 @@ TILOS-AI 研究所维护，是 Google Nature 论文（RL 宏布局）的开源�
 
 | 资源 | URL | 状态 | 体积 |
 | --- | --- | --- | --- |
-| ISPD2005 打包版 | `http://www.cerc.utexas.edu/~zixuan/ispd2005dp.tar.xz` | ✅ 200 | 103 MB |
+| ISPD2005 打包版 | `http://www.cerc.utexas.edu/~zixuan/ispd2005dp.tar.xz` | ❌ **403**（2026-09-29 复测） | 103 MB |
 | ISPD2005 adaptec1 | `https://www.ispd.cc/contests/05/ispd05-contest/adaptec1.tar.gz` | ✅ 200 | 4 MB |
 | ISPD2005 bigblue3 | `.../ispd05-contest/benchmarks/bigblue3.tar.gz` | ✅ 200 | — |
 | ISPD2005 bigblue4 | `.../ispd05-contest/benchmarks/bigblue4.tar.gz` | ✅ 200 | 43 MB |
@@ -305,6 +305,24 @@ TILOS-AI 研究所维护，是 Google Nature 论文（RL 宏布局）的开源�
 
 > ⚠️ 目录列表（`.../contests/19/benchmarks/`、`.../~zixuan/`）返回 403，
 > 这只是禁止列目录，**具体文件仍可下载**，不要被误导。
+
+### 6.1 ⚠️ 2026-09-29 复测：两个源均已不可自动下载
+
+M3 实施时重新验证，上表中 2026-09-09 记录的两条结论都已失效：
+
+| 源 | 现状 | 说明 |
+| --- | --- | --- |
+| UT Austin 打包版 | **403 Forbidden** | 已从"实测 200"变为拒绝访问 |
+| `ispd.cc` | **反爬挑战页** | `HEAD` 仍返回 200，但 `GET` 实际返回一个 12 KB 的 HTML 页（内含 `setTimeout(reload)` 的 JS 挑战），不是 tar。换浏览器 UA 无效 |
+
+> **教训**：`curl -sSI`（HTTP HEAD）不足以验证可下载性。反爬站点对 HEAD 放行、
+> 对 GET 返回挑战页，HEAD 的 200 是**假阳性**。验证下载源必须实际 `GET` 并
+> `file` 检查产物类型。
+
+**这不阻塞 M3。** `test_data/adaptec1` 与 `adaptec4` 本身就是 ISPD2005 原版
+（文件头为 `UCLA nodes 1.0` / `Jan 6 2005` / IBM Austin），可直接作为重建输入，
+见[附录](#附录从-ispd2005-自行重建-mms)。完整 8 个设计的规模阶梯属 M6 范围，
+届时需人工下载或另寻镜像。
 
 ---
 
@@ -376,5 +394,38 @@ o496037  4005  4114  : N          ← 修改后
 > **注意**：重建结果与官方 MMS 未必逐字节一致（论文未给出完整的 I/O 判别脚本），
 > 因此**不能用于跨论文的 HPWL 横向比较**，但完全可以用于
 > **验证我们自己的混合尺寸代码路径是否被正确执行**——这才是我们的主要目的。
->
-> 如需此脚本，可在 M6 阶段实现，输入 ISPD2005 目录、输出 MMS 风格目录，约 100 行 Python。
+
+### 已实现：`scripts/make_mms.py`（M3 阶段完成，非 M6）
+
+```bash
+python3 scripts/make_mms.py test_data/adaptec1 benchmarks/mms/adaptec1
+```
+
+**判别规则**：按**对象中心是否落在 core region 内**划分。中心在内为宏单元
+（解放为可移动），中心在外为 I/O pad（尺寸置零、保持固定、写成 `terminal_NI`）。
+
+**这条规则在 adaptec1 上被两个独立判据交叉验证**：480 个中心在 core 外的
+terminal 恰好只有 `432×72` 与 `72×432` 两种尺寸（典型四边 pad 环），
+其余 63 个在 core 内的才是真宏（`164×2136` / `500×2136` / `1206×2856` …）。
+位置判据与尺寸判据给出同一划分。
+
+**一处论文未提、但必须处理的细节**：BookShelf 的引脚偏移是**相对对象中心**的。
+若把 `432×72` 的 pad 就地改成 `0×0`，其中心从 `(x+216, y+36)` 跳回 `(x, y)`，
+挂在其上的引脚随之平移——实测 adaptec1 的 480 个 pad 平均平移 **126 单位**。
+脚本因此在置零的同时把坐标改写为原中心。**验证**：重建前后 HPWL 逐位相同
+（adaptec1 `1.0492422900e+08`，adaptec4 `3.9788536200e+08`）。
+
+**重建结果**：
+
+| 设计 | 可移动宏 | I/O pad 置零 | 宏占可移动面积 | 说明 |
+| --- | --- | --- | --- | --- |
+| adaptec1 | **63** | 480 | **56.9%** | 干净的宏/pad 分离，四阶段验证主力 |
+| adaptec4 | **1329** | 0 | — | 该设计 `.nodes` 中本就没有独立 pad 对象 |
+
+> adaptec4 的 1329 个 terminal 全部中心在 core 内、最小尺寸 `504×216`（18 个 row 高），
+> 即原始数据里没有 I/O pad 对象。脚本如实输出"0 个 pad"，这是规则的正确结果而非 bug。
+> 副作用是重建后 adaptec4 **没有任何固定节点**（`terminalDensity` 恒为 0），
+> 是个有用的退化边界用例。
+
+`.nets` / `.wts` / `.scl` 逐字节不变，`.nodes` / `.pl` 行数守恒，
+`NumTerminals` 同步更新（543→480，1329→0）。

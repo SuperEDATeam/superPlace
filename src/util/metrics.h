@@ -26,6 +26,8 @@ class MetricsSink {
 public:
     void setOutputDir(const std::string& dir);
 
+    /// 阶段可嵌套：全局布局阶段内部还会分出 mGP / FILLERONLY / cGP 三个子阶段，
+    /// 各自有独立的迭代曲线与耗时。因此当前阶段名是一个【栈】而不是单个字符串。
     void beginStage(const std::string& stage);
     void push(const IterMetrics& m);
     void endStage(double elapsed_ms);
@@ -43,7 +45,7 @@ public:
 
 private:
     std::string out_dir_;
-    std::string cur_stage_;
+    std::vector<std::string> stage_stack_;
     std::vector<std::pair<std::string, std::vector<IterMetrics>>> stages_;
     std::map<std::string, double> durations_;
     std::map<std::string, double> summary_num_;

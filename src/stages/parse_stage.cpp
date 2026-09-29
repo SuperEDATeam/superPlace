@@ -1,5 +1,6 @@
 #include "stages/parse_stage.h"
 
+#include "stages/gp_stage.h"
 #include "stages/init_stage.h"
 
 #include <cstdio>
@@ -41,6 +42,7 @@ void ParseStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
 std::unique_ptr<PlacementStage> makeStage(const std::string& name) {
     if (name == "parse") return std::make_unique<ParseStage>();
     if (name == "init")  return std::make_unique<InitStage>();
+    if (name == "gp")    return std::make_unique<GlobalPlaceStage>();
     return nullptr;
 }
 

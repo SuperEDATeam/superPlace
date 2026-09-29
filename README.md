@@ -14,12 +14,12 @@ ePlace 静电场模型 + Nesterov 加速梯度（全局布局）→ Abacus 合�
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
 | **M1** | 地基：数据层 / BookShelf 解析 / 可视化 / CLI | ✅ 完成 |
-| M2 | 三种初始布局与对比分析（任务 4） | 未开始 |
-| M2′ | 泊松求解器（可与 M2 并行） | 未开始 |
-| M3 | ePlace 全局布局（任务 5） | 未开始 |
+| **M2** | 三种初始布局与对比分析（任务 4） | ✅ 完成 |
+| **M2′** | 泊松求解器（DCT / FFTW） | ✅ 完成 |
+| **M3** | ePlace 全局布局四阶段（任务 5 + 任务 7 宏部分） | ✅ 完成 |
 | M4 | GDSII 分层导出（任务 6） | 未开始 |
 | M5 | Abacus 合法化（任务 7） | 未开始 |
-| M6 | 大规模 benchmark（MMS / ISPD2005） | 未开始 |
+| M6 | 大规模 benchmark（ISPD2005 全套；MMS 已于 M3 提前引入） | 未开始 |
 | M7 | CUDA 泊松求解器 | 未开始 |
 
 ## 构建
@@ -58,11 +58,30 @@ cmake --build build
 产出 `results/<benchmark>/`：
 
 ```
-adaptec1.parse.pl     布局结果（BookShelf .pl）
-metrics.csv           逐迭代指标
+adaptec1.gp.pl        布局结果（BookShelf .pl）
+metrics.csv           逐迭代指标（按 mGP / FILLERONLY / cGP 分组）
 summary.json          统计总览与各阶段耗时
-plots/parse.png       可视化
+plots/gp.png          可视化；--full-plot 时另有 iter_*.png
 ```
+
+加 `--full-plot` 后可合成收敛动画：
+
+```bash
+python3 scripts/make_gif.py results/adaptec1
+```
+
+### 混合尺寸数据
+
+`test_data/` 三个 benchmark 的**可移动宏均为 0**（ISPD2005/2006 原版把宏全部固定），
+四阶段流程中的 mLG / FILLERONLY / cGP 在它们上不会被触发。
+用 MMS 重建脚本得到含可移动宏的数据：
+
+```bash
+python3 scripts/make_mms.py test_data/adaptec1 benchmarks/mms/adaptec1
+```
+
+得到 63 个可移动宏（占可移动面积 56.9%），详见
+[04-Benchmark 调研与获取指南](work_report/04-Benchmark%20调研与获取指南.md)。
 
 主要参数：`--stage <list>` 选择阶段、`--seed <n>` 随机种子、
 `--threads <n>` 线程数、`--no-plot` 关闭出图、`--full-plot` 逐迭代出图。
@@ -79,6 +98,13 @@ cd build && ctest --output-on-failure
 | `test_parser` | adaptec1 的 21 项统计数字与课程基准逐项对拍 |
 | `test_csr` | CSR 双向索引与朴素重建的参考结果比对 |
 | `test_roundtrip` | `.pl` 写出/读回位置逐位一致，两次写出逐字节一致 |
+| `test_poisson` | 泊松求解器与解析解对拍 |
+| `test_hpwl` / `test_b2b` | HPWL 与 B2B 权重模型 |
+| `test_nesterov` | 凸二次函数上收敛到解析最优点 |
+| `test_wirelength` | WA 梯度与中心差分对拍 |
+| `test_density` | 密度缩放规则、local smoothing、τ、电荷守恒 |
+| `test_filler` | filler 面积配平、四舍五入、负面积保护 |
+| `test_macro_sa` | 宏合法化：零重叠、行对齐、增量线长与全量一致、确定性 |
 
 ## 目录
 

@@ -44,11 +44,29 @@ struct Config {
     int   qp_solver_max_iter = 100;   // 单次 BiCGSTAB 上限
     float qp_min_distance    = 1.0f;  // 权重分母下限，防止奇异
 
-    // ------------------------------------------------- 后续里程碑参数（M3 起使用）
-    float target_density   = 1.0f;
-    float target_overflow  = 0.10f;
-    int   gp_max_iter      = 1000;
+    // ------------------------------------------------------ 全局布局（M3）
+    float target_density    = 1.0f;
+    float target_overflow   = 0.10f;   ///< mGP 停止阈值 τ
+    float cgp_target_overflow = 0.07f; ///< cGP 停止阈值（比 mGP 更严）
+    int   gp_max_iter       = 1000;
     int   ignore_net_degree = 100;
+    /// bin 网格维度；0 表示按 05 §5.5.3 自动推算（2 的幂，上限 1024）
+    int   gp_bin_dim        = 0;
+    /// λ 调度的 ΔHPWL 参考尺度（05 §5.5.9）
+    float delta_hpwl_ref    = 3.5e5f;
+    /// Nesterov 是否启用 Barzilai-Borwein 步长
+    bool  use_bb            = true;
+    /// FILLERONLY 阶段的固定轮数
+    int   filler_only_iters = 20;
+
+    // -------------------------------------------------- 宏单元合法化 mLG（M3）
+    /// SA 移动次数；0 表示按宏数量自动推算（每宏 3000 次，下限 2 万）
+    int   macro_sa_moves       = 0;
+    /// 初温标定：初始时一次典型恶化被接受的目标概率
+    float macro_sa_init_accept = 0.9f;
+    /// 终温与初温之比。按端点定义降温曲线，比给"每步降温率"更可解释——
+    /// 后者的实际效果取决于移动次数，改一个参数会悄悄改变另一个的含义。
+    float macro_sa_temp_ratio  = 1e-4f;
 
     /// 从命令行构造。会先读 --config 指向的 JSON，再让 CLI 参数覆盖。
     /// 解析失败时抛 std::runtime_error。

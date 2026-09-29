@@ -33,6 +33,7 @@ public:
     // ------------------------------------------------------------------- 引脚
     std::vector<float> pin_offset_x, pin_offset_y;  // 相对所属节点【中心】
     std::vector<int>   pin2node;
+    std::vector<int>   pin2net;                     // 由 finalizeCSR 填充
 
     // -------------------------------------------------------------- 超图 CSR
     // net k 的引脚：flat_net2pin[net2pin_start[k] .. net2pin_start[k+1])

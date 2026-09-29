@@ -79,7 +79,15 @@ void Config::loadJson(const std::string& path) {
     get("plot_fillers", plot_fillers);
     get("target_density", target_density);
     get("target_overflow", target_overflow);
+    get("cgp_target_overflow", cgp_target_overflow);
     get("gp_max_iter", gp_max_iter);
+    get("gp_bin_dim", gp_bin_dim);
+    get("delta_hpwl_ref", delta_hpwl_ref);
+    get("use_bb", use_bb);
+    get("filler_only_iters", filler_only_iters);
+    get("macro_sa_moves", macro_sa_moves);
+    get("macro_sa_init_accept", macro_sa_init_accept);
+    get("macro_sa_temp_ratio", macro_sa_temp_ratio);
     get("qp_max_iter", qp_max_iter);
     get("qp_min_distance", qp_min_distance);
     get("qp_tol", qp_tol);

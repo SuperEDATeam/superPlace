@@ -26,3 +26,5 @@ add_test([=[test_filler]=] "/home/friedrichc/Placement/build_clean/test/test_fil
 set_tests_properties([=[test_filler]=] PROPERTIES  _BACKTRACE_TRIPLES "/home/friedrichc/Placement/test/CMakeLists.txt;9;add_test;/home/friedrichc/Placement/test/CMakeLists.txt;21;sp_add_test;/home/friedrichc/Placement/test/CMakeLists.txt;0;")
 add_test([=[test_macro_sa]=] "/home/friedrichc/Placement/build_clean/test/test_macro_sa")
 set_tests_properties([=[test_macro_sa]=] PROPERTIES  _BACKTRACE_TRIPLES "/home/friedrichc/Placement/test/CMakeLists.txt;9;add_test;/home/friedrichc/Placement/test/CMakeLists.txt;22;sp_add_test;/home/friedrichc/Placement/test/CMakeLists.txt;0;")
+add_test([=[test_eplace]=] "/home/friedrichc/Placement/build_clean/test/test_eplace")
+set_tests_properties([=[test_eplace]=] PROPERTIES  _BACKTRACE_TRIPLES "/home/friedrichc/Placement/test/CMakeLists.txt;9;add_test;/home/friedrichc/Placement/test/CMakeLists.txt;23;sp_add_test;/home/friedrichc/Placement/test/CMakeLists.txt;0;")

@@ -308,6 +308,19 @@ test_macro_sa/fast:
 	$(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_macro_sa.dir/build.make test/CMakeFiles/test_macro_sa.dir/build
 .PHONY : test_macro_sa/fast
 
+#=============================================================================
+# Target rules for targets named test_eplace
+
+# Build rule for target.
+test_eplace: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_eplace
+.PHONY : test_eplace
+
+# fast build rule for target.
+test_eplace/fast:
+	$(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_eplace.dir/build.make test/CMakeFiles/test_eplace.dir/build
+.PHONY : test_eplace/fast
+
 src/db/db_stats.o: src/db/db_stats.cpp.o
 .PHONY : src/db/db_stats.o
 
@@ -971,6 +984,7 @@ help:
 	@echo "... test_b2b"
 	@echo "... test_csr"
 	@echo "... test_density"
+	@echo "... test_eplace"
 	@echo "... test_filler"
 	@echo "... test_hpwl"
 	@echo "... test_macro_sa"

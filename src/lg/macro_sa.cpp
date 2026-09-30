@@ -193,15 +193,33 @@ private:
 };
 
 /// 重叠模型：宏-宏两两，加上宏与固定阻挡（非零面积的固定节点）。
+///
+/// **带均匀网格索引。** 朴素实现每次查询都要扫过全部 M 个宏，而 SA 的移动次数
+/// 又正比于 M，总复杂度是 O(M²)：实测 63 个宏时单次移动 2.03 µs、1329 个宏时
+/// 5.32 µs，外推到 newblue7 量级（约 2.5 万个宏）要跑两个多小时，M6 直接不可行。
+/// 加索引后单次查询只看落在该宏包围盒所覆盖网格里的少数候选。
+///
+/// 两条设计约束：
+///   * **坐标与索引由本类统一持有**，只经 setPos() 修改。若让调用方另存一份坐标，
+///     二者一旦失步就会漏掉重叠，而这种错误不会崩、只会悄悄输出非法布局。
+///   * **候选要按下标排序后再累加**。网格桶里的次序取决于插入删除历史，
+///     不排序的话同一份布局两次运行可能得到最后几位不同的重叠面积（铁律 7）。
+///
+/// 非线程安全（内部有查询用的临时缓冲）；SA 本身是串行的。
 class OverlapModel {
 public:
-    void build(const PlaceDB& db, const std::vector<int>& macros) {
-        w_.resize(macros.size());
-        h_.resize(macros.size());
-        for (size_t s = 0; s < macros.size(); ++s) {
+    void build(const PlaceDB& db, const std::vector<int>& macros, const std::vector<float>& x0,
+               const std::vector<float>& y0) {
+        const size_t n = macros.size();
+        w_.resize(n);
+        h_.resize(n);
+        cx_.assign(x0.begin(), x0.end());
+        cy_.assign(y0.begin(), y0.end());
+        for (size_t s = 0; s < n; ++s) {
             w_[s] = db.node_w[static_cast<size_t>(macros[s])];
             h_[s] = db.node_h[static_cast<size_t>(macros[s])];
         }
+
         // 零面积的 terminal_NI（MMS 把 I/O pad 全部置零）不构成阻挡，必须排除，
         // 否则会引入零面积矩形并让阻挡列表凭空膨胀几百项。
         for (int i = db.numMovable; i < db.numNodes; ++i) {
@@ -210,44 +228,175 @@ public:
                 continue;
             blockages_.push_back(db.box(i));
         }
+
+        // 网格维度取 ~sqrt(2M)，即平均每格半个宏。上限 128 以免格子数失控；
+        // 个别超大宏会跨很多格，这是可接受的——它们数量少。
+        const double target = std::sqrt(2.0 * static_cast<double>(std::max<size_t>(n, 1)));
+        dim_ = std::min(128, std::max(4, static_cast<int>(target + 0.5)));
+        ox_ = db.coreRegion.lx;
+        oy_ = db.coreRegion.ly;
+        cellW_ = std::max(1e-3f, db.coreRegion.width() / static_cast<float>(dim_));
+        cellH_ = std::max(1e-3f, db.coreRegion.height() / static_cast<float>(dim_));
+
+        cells_.assign(static_cast<size_t>(dim_) * static_cast<size_t>(dim_), {});
+        blockCells_.assign(static_cast<size_t>(dim_) * static_cast<size_t>(dim_), {});
+        for (size_t s = 0; s < n; ++s) insert(static_cast<int>(s));
+        for (size_t b = 0; b < blockages_.size(); ++b) {
+            int x0i, x1i, y0i, y1i;
+            cellRange(blockages_[b], x0i, x1i, y0i, y1i);
+            for (int gx = x0i; gx <= x1i; ++gx)
+                for (int gy = y0i; gy <= y1i; ++gy)
+                    blockCells_[cellIdx(gx, gy)].push_back(static_cast<int>(b));
+        }
+        stamp_.assign(n, -1);
+        blockStamp_.assign(blockages_.size(), -1);
     }
 
-    /// 宏 s 在位置 (x,y) 与其他所有宏、所有阻挡的重叠面积之和。
-    double at(int s, float x, float y, const std::vector<float>& cx,
-              const std::vector<float>& cy) const {
-        const Rect a = rectOf(s, x, y);
-        double sum = 0.0;
-        for (size_t t = 0; t < w_.size(); ++t) {
-            if (static_cast<int>(t) == s) continue;
-            sum += overlapArea(a, rectOf(static_cast<int>(t), cx[t], cy[t]));
+    float x(int s) const { return cx_[static_cast<size_t>(s)]; }
+    float y(int s) const { return cy_[static_cast<size_t>(s)]; }
+    const std::vector<float>& xs() const { return cx_; }
+    const std::vector<float>& ys() const { return cy_; }
+
+    /// 位置与索引的唯一写入口。
+    void setPos(int s, float nx, float ny) {
+        erase(s);
+        cx_[static_cast<size_t>(s)] = nx;
+        cy_[static_cast<size_t>(s)] = ny;
+        insert(s);
+    }
+
+    /// 宏 s 若位于 (x,y)，与其他宏和固定阻挡的重叠面积之和。
+    double at(int s, float px, float py) const {
+        const Rect a = rectOf(s, px, py);
+        int x0i, x1i, y0i, y1i;
+        cellRange(a, x0i, x1i, y0i, y1i);
+
+        cand_.clear();
+        ++tick_;
+        for (int gx = x0i; gx <= x1i; ++gx) {
+            for (int gy = y0i; gy <= y1i; ++gy) {
+                for (int t : cells_[cellIdx(gx, gy)]) {
+                    if (t == s) continue;
+                    if (stamp_[static_cast<size_t>(t)] == tick_) continue;   // 跨格去重
+                    stamp_[static_cast<size_t>(t)] = tick_;
+                    cand_.push_back(t);
+                }
+            }
         }
-        for (const Rect& b : blockages_) sum += overlapArea(a, b);
+        // 桶内次序取决于插入删除历史，必须排序后再累加，否则浮点和不可复现
+        std::sort(cand_.begin(), cand_.end());
+
+        double sum = 0.0;
+        for (int t : cand_) sum += overlapArea(a, rectOf(t, cx_[static_cast<size_t>(t)],
+                                                         cy_[static_cast<size_t>(t)]));
+
+        if (!blockages_.empty()) {
+            bcand_.clear();
+            for (int gx = x0i; gx <= x1i; ++gx) {
+                for (int gy = y0i; gy <= y1i; ++gy) {
+                    for (int b : blockCells_[cellIdx(gx, gy)]) {
+                        if (blockStamp_[static_cast<size_t>(b)] == tick_) continue;
+                        blockStamp_[static_cast<size_t>(b)] = tick_;
+                        bcand_.push_back(b);
+                    }
+                }
+            }
+            std::sort(bcand_.begin(), bcand_.end());
+            for (int b : bcand_) sum += overlapArea(a, blockages_[static_cast<size_t>(b)]);
+        }
         return sum;
     }
 
-    double total(const std::vector<float>& cx, const std::vector<float>& cy) const {
+    /// 全局重叠总量。按下标序两两求和，与索引无关，可作为 at() 的独立对照。
+    double total() const {
         double sum = 0.0;
         for (size_t s = 0; s < w_.size(); ++s) {
-            const Rect a = rectOf(static_cast<int>(s), cx[s], cy[s]);
+            const Rect a = rectOf(static_cast<int>(s), cx_[s], cy_[s]);
             for (size_t t = s + 1; t < w_.size(); ++t)
-                sum += overlapArea(a, rectOf(static_cast<int>(t), cx[t], cy[t]));
+                sum += overlapArea(a, rectOf(static_cast<int>(t), cx_[t], cy_[t]));
             for (const Rect& b : blockages_) sum += overlapArea(a, b);
         }
         return sum;
     }
 
-    Rect rectOf(int s, float x, float y) const {
+    Rect rectOf(int s, float px, float py) const {
         const float hw = 0.5f * w_[static_cast<size_t>(s)];
         const float hh = 0.5f * h_[static_cast<size_t>(s)];
-        return {x - hw, y - hh, x + hw, y + hh};
+        return {px - hw, py - hh, px + hw, py + hh};
     }
 
     float width(int s) const { return w_[static_cast<size_t>(s)]; }
     float height(int s) const { return h_[static_cast<size_t>(s)]; }
+    int   count() const { return static_cast<int>(w_.size()); }
+    int   gridDim() const { return dim_; }
+
+    /// 不变量自检：索引版 at() 必须与全扫一致。
+    ///
+    /// 索引失效是**静默**错误——漏掉候选只会让 at() 少算重叠，SA 与贪心修复
+    /// 会据此把宏放到自以为干净的位置上，最后输出一份非法布局，不崩不报。
+    /// 这里花一次 O(M²) 把它钉死（只在 mLG 开头做一次，相对整体耗时可忽略）。
+    /// 返回最大绝对偏差。
+    double selfCheck() const {
+        double worst = 0.0;
+        const int n = static_cast<int>(w_.size());
+        for (int s = 0; s < n; ++s) {
+            const Rect a = rectOf(s, cx_[static_cast<size_t>(s)], cy_[static_cast<size_t>(s)]);
+            double brute = 0.0;
+            for (int t = 0; t < n; ++t) {
+                if (t == s) continue;
+                brute += overlapArea(a, rectOf(t, cx_[static_cast<size_t>(t)],
+                                               cy_[static_cast<size_t>(t)]));
+            }
+            for (const Rect& b : blockages_) brute += overlapArea(a, b);
+            worst = std::max(worst, std::fabs(brute - at(s, cx_[static_cast<size_t>(s)],
+                                                         cy_[static_cast<size_t>(s)])));
+        }
+        return worst;
+    }
 
 private:
-    std::vector<float> w_, h_;
+    size_t cellIdx(int gx, int gy) const {
+        return static_cast<size_t>(gx) * static_cast<size_t>(dim_) + static_cast<size_t>(gy);
+    }
+    void cellRange(const Rect& r, int& x0i, int& x1i, int& y0i, int& y1i) const {
+        x0i = std::clamp(static_cast<int>((r.lx - ox_) / cellW_), 0, dim_ - 1);
+        x1i = std::clamp(static_cast<int>((r.hx - ox_) / cellW_), 0, dim_ - 1);
+        y0i = std::clamp(static_cast<int>((r.ly - oy_) / cellH_), 0, dim_ - 1);
+        y1i = std::clamp(static_cast<int>((r.hy - oy_) / cellH_), 0, dim_ - 1);
+    }
+    void insert(int s) {
+        int x0i, x1i, y0i, y1i;
+        cellRange(rectOf(s, cx_[static_cast<size_t>(s)], cy_[static_cast<size_t>(s)]), x0i, x1i,
+                  y0i, y1i);
+        for (int gx = x0i; gx <= x1i; ++gx)
+            for (int gy = y0i; gy <= y1i; ++gy) cells_[cellIdx(gx, gy)].push_back(s);
+    }
+    void erase(int s) {
+        int x0i, x1i, y0i, y1i;
+        cellRange(rectOf(s, cx_[static_cast<size_t>(s)], cy_[static_cast<size_t>(s)]), x0i, x1i,
+                  y0i, y1i);
+        for (int gx = x0i; gx <= x1i; ++gx) {
+            for (int gy = y0i; gy <= y1i; ++gy) {
+                std::vector<int>& v = cells_[cellIdx(gx, gy)];
+                for (size_t k = 0; k < v.size(); ++k) {
+                    if (v[k] != s) continue;
+                    v[k] = v.back();   // 顺序被打乱，故 at() 必须排序后再累加
+                    v.pop_back();
+                    break;
+                }
+            }
+        }
+    }
+
+    std::vector<float> w_, h_, cx_, cy_;
     std::vector<Rect>  blockages_;
+
+    int   dim_ = 1;
+    float ox_ = 0.f, oy_ = 0.f, cellW_ = 1.f, cellH_ = 1.f;
+    std::vector<std::vector<int>> cells_, blockCells_;
+
+    mutable std::vector<int> stamp_, blockStamp_, cand_, bcand_;
+    mutable int tick_ = 0;
 };
 
 /// 把宏的中心坐标对齐到 site / row 栅格，并夹回 core。
@@ -284,25 +433,46 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     }
 
     const size_t nM = macros.size();
-    std::vector<float>   cx(nM), cy(nM);
+    std::vector<float>   x0(nM), y0(nM);
     std::vector<uint8_t> flipped(nM, 0);
     for (size_t s = 0; s < nM; ++s) {
-        cx[s] = db.node_x[static_cast<size_t>(macros[s])];
-        cy[s] = db.node_y[static_cast<size_t>(macros[s])];
+        x0[s] = db.node_x[static_cast<size_t>(macros[s])];
+        y0[s] = db.node_y[static_cast<size_t>(macros[s])];
     }
 
     OverlapModel om;
-    om.build(db, macros);
+    om.build(db, macros, x0, y0);
     IncrementalWirelength iwl;
     iwl.build(db, macros);
 
     Snapper snap{db.coreRegion.lx, db.coreRegion.ly, db.coreRegion.hx, db.coreRegion.hy,
                  db.rows.empty() ? 1.f : db.rows[0].step,
                  db.rowHeight > 0.f ? db.rowHeight : 1.f};
-    for (size_t s = 0; s < nM; ++s) snap(om, static_cast<int>(s), cx[s], cy[s]);
+    for (size_t s = 0; s < nM; ++s) {
+        float px = om.x(static_cast<int>(s)), py = om.y(static_cast<int>(s));
+        snap(om, static_cast<int>(s), px, py);
+        om.setPos(static_cast<int>(s), px, py);
+    }
+    // cx / cy 一律经由 om 读取：坐标与网格索引只有 setPos 一个写入口，
+    // 二者失步会漏掉重叠，而那是一种不会崩、只会静默输出非法布局的错误。
+    const std::vector<float>& cx = om.xs();
+    const std::vector<float>& cy = om.ys();
+
+    // 索引自检。M 很大时 O(M²) 也会变贵，超过 8000 个宏就跳过——
+    // 那个规模下真要排查，用小用例复现即可。
+    if (nM <= 8000) {
+        const double dev = om.selfCheck();
+        // 面积量级可达 1e8，float 求和的相对误差约 1e-7，放到 1e-3 的绝对容差
+        if (dev > 1e-3)
+            SP_ERROR("mLG: 空间索引与全扫不一致（最大偏差 %.6g）——重叠会被低估，"
+                     "输出布局可能非法", dev);
+        else
+            SP_INFO("mLG: 空间索引自检通过（%dx%d 网格，最大偏差 %.3g）", om.gridDim(),
+                    om.gridDim(), dev);
+    }
 
     r.hpwlBefore = computeHPWL(db);
-    r.overlapBefore = om.total(cx, cy);
+    r.overlapBefore = om.total();
 
     double macroArea = 0.0;
     for (int m : macros) macroArea += db.area(m);
@@ -360,24 +530,26 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             float nx = oldX + rng.uniform(-span, span) * coreW;
             float ny = oldY + rng.uniform(-span, span) * coreH;
             snap(om, s, nx, ny);
-            dOverlap = om.at(s, nx, ny, cx, cy) - om.at(s, oldX, oldY, cx, cy);
-            cx[static_cast<size_t>(s)] = nx;
-            cy[static_cast<size_t>(s)] = ny;
+            dOverlap = om.at(s, nx, ny) - om.at(s, oldX, oldY);
+            om.setPos(s, nx, ny);
         } else if (op <= 8 && nM >= 2) {
             do {
                 s2 = rng.uniformInt(0, static_cast<int>(nM) - 1);
             } while (s2 == s);
             oldX2 = cx[static_cast<size_t>(s2)];
             oldY2 = cy[static_cast<size_t>(s2)];
-            const double before = om.at(s, oldX, oldY, cx, cy) + om.at(s2, oldX2, oldY2, cx, cy);
+            // at(s) + at(s2) 会把 (s,s2) 这一对算两遍，而 overlap 记的是每对只算
+            // 一次的总量。必须把这一对减掉，否则增量与真实总量长期漂移。
+            const double before = om.at(s, oldX, oldY) + om.at(s2, oldX2, oldY2) -
+                                  overlapArea(om.rectOf(s, oldX, oldY),
+                                              om.rectOf(s2, oldX2, oldY2));
             float ax = oldX2, ay = oldY2, bx = oldX, by = oldY;
             snap(om, s, ax, ay);
             snap(om, s2, bx, by);
-            cx[static_cast<size_t>(s)] = ax;
-            cy[static_cast<size_t>(s)] = ay;
-            cx[static_cast<size_t>(s2)] = bx;
-            cy[static_cast<size_t>(s2)] = by;
-            const double after = om.at(s, ax, ay, cx, cy) + om.at(s2, bx, by, cx, cy);
+            om.setPos(s, ax, ay);
+            om.setPos(s2, bx, by);
+            const double after = om.at(s, ax, ay) + om.at(s2, bx, by) -
+                                 overlapArea(om.rectOf(s, ax, ay), om.rectOf(s2, bx, by));
             dOverlap = after - before;
         } else {
             // 翻转只改引脚位置，不改外形，因此重叠不变
@@ -407,22 +579,17 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
                 bestFlip = flipped;
             }
         } else {
-            cx[static_cast<size_t>(s)] = oldX;
-            cy[static_cast<size_t>(s)] = oldY;
+            om.setPos(s, oldX, oldY);
             flipped[static_cast<size_t>(s)] = oldFlip;
-            if (s2 >= 0) {
-                cx[static_cast<size_t>(s2)] = oldX2;
-                cy[static_cast<size_t>(s2)] = oldY2;
-            }
+            if (s2 >= 0) om.setPos(s2, oldX2, oldY2);
         }
     }
     r.moves = moves;
 
-    cx = bestX;
-    cy = bestY;
+    for (size_t s = 0; s < nM; ++s) om.setPos(static_cast<int>(s), bestX[s], bestY[s]);
     flipped = bestFlip;
     wl = iwl.total(cx, cy, flipped);
-    overlap = om.total(cx, cy);
+    overlap = om.total();
 
     // ---- 贪心修复：SA 是概率算法，不保证重叠恰好为 0，而"零重叠"是硬验收项。
     //
@@ -437,12 +604,12 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
 
     for (int pass = 0; pass < 12 && overlap > 0.0; ++pass) {
         std::vector<double> ov(nM);
-        for (size_t s = 0; s < nM; ++s) ov[s] = om.at(static_cast<int>(s), cx[s], cy[s], cx, cy);
+        for (size_t s = 0; s < nM; ++s) ov[s] = om.at(static_cast<int>(s), cx[s], cy[s]);
         std::stable_sort(order.begin(), order.end(),
                          [&ov](size_t a, size_t b) { return ov[a] > ov[b]; });
 
         for (size_t s : order) {
-            const double cur = om.at(static_cast<int>(s), cx[s], cy[s], cx, cy);
+            const double cur = om.at(static_cast<int>(s), cx[s], cy[s]);
             if (cur <= 0.0) continue;
 
             // 位移是这里的第一等公民：宏刚从 mGP 的线长最优位置上下来，挪得越远
@@ -474,7 +641,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
                     snap(om, static_cast<int>(s), nx, ny);
                     const double d = std::hypot(static_cast<double>(nx - cx[s]),
                                                 static_cast<double>(ny - cy[s]));
-                    const double o = om.at(static_cast<int>(s), nx, ny, cx, cy);
+                    const double o = om.at(static_cast<int>(s), nx, ny);
                     if (o <= 0.0) {
                         if (d < zeroDist) {
                             zeroDist = d;
@@ -492,20 +659,66 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             }
 
             if (haveZero) {
-                cx[s] = zeroX;
-                cy[s] = zeroY;
+                om.setPos(static_cast<int>(s), zeroX, zeroY);
                 ++r.repaired;
             } else if (haveFallback) {
-                cx[s] = fbX;
-                cy[s] = fbY;
+                om.setPos(static_cast<int>(s), fbX, fbY);
                 ++r.repaired;
             }
         }
-        const double after = om.total(cx, cy);
-        if (after >= overlap) {   // 本轮毫无进展，再多轮也是白跑
+        const double after = om.total();
+        if (after >= overlap) {   // 本轮毫无进展，换下面的分离平移去啃
             overlap = after;
             break;
         }
+        overlap = after;
+    }
+
+    // ---- 最小分离平移：网格搜索啃不动的零头交给它。
+    //
+    // 网格搜索是在固定步长的候选点里挑，一个只差几个单位就能分开的宏，
+    // 可能在整张候选网格上都找不到零重叠点。这里改为**直接算出让它脱离
+    // 当前最大重叠邻居所需的最小平移**（左/右/下/上四选一），一次到位。
+    // 可能引入新的重叠，故迭代若干轮并只接受总量下降的结果。
+    for (int pass = 0; pass < 30 && overlap > 0.0; ++pass) {
+        bool moved = false;
+        for (size_t s = 0; s < nM; ++s) {
+            const int si = static_cast<int>(s);
+            if (om.at(si, cx[s], cy[s]) <= 0.0) continue;
+            const Rect a = om.rectOf(si, cx[s], cy[s]);
+
+            // 找重叠最大的那个邻居
+            int worst = -1;
+            double worstOv = 0.0;
+            for (size_t t = 0; t < nM; ++t) {
+                if (t == s) continue;
+                const double o = overlapArea(a, om.rectOf(static_cast<int>(t), cx[t], cy[t]));
+                if (o > worstOv) { worstOv = o; worst = static_cast<int>(t); }
+            }
+            if (worst < 0) continue;
+            const Rect b = om.rectOf(worst, cx[static_cast<size_t>(worst)],
+                                     cy[static_cast<size_t>(worst)]);
+
+            const float dxL = b.lx - a.hx, dxR = b.hx - a.lx;   // 推到左侧 / 右侧
+            const float dyD = b.ly - a.hy, dyU = b.hy - a.ly;   // 推到下方 / 上方
+            const float cand[4][2] = {{dxL, 0.f}, {dxR, 0.f}, {0.f, dyD}, {0.f, dyU}};
+
+            double bestOv = om.at(si, cx[s], cy[s]);
+            float bestPx = cx[s], bestPy = cy[s];
+            for (const auto& d : cand) {
+                float nx = cx[s] + d[0], ny = cy[s] + d[1];
+                snap(om, si, nx, ny);
+                const double o = om.at(si, nx, ny);
+                if (o < bestOv - 1e-9) { bestOv = o; bestPx = nx; bestPy = ny; }
+            }
+            if (bestPx != cx[s] || bestPy != cy[s]) {
+                om.setPos(si, bestPx, bestPy);
+                ++r.repaired;
+                moved = true;
+            }
+        }
+        const double after = om.total();
+        if (!moved || after >= overlap) { overlap = after; break; }
         overlap = after;
     }
 
@@ -529,7 +742,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
         db.node_flags[static_cast<size_t>(m)] |= F_FIXED;
     }
 
-    r.overlapAfter = om.total(cx, cy);
+    r.overlapAfter = om.total();
     r.hpwlAfter = computeHPWL(db);
 
     const double ms = timer.elapsedMs();

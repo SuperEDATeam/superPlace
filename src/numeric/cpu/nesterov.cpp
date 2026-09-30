@@ -15,36 +15,32 @@
 #include <vector>
 
 #include "numeric/optimizer.h"
+#include "numeric/reduction.h"
 
 namespace sp {
 namespace {
 
+// 三个归约全部走固定分块（铁律 7）。它们决定步长 α，而 α 直接决定下一步走到哪里——
+// 求和次序若随线程数漂移，整条优化轨迹就会跟着漂。
 double l2Norm(const float* a, int n) {
-    double s = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : s)
-    for (int i = 0; i < n; ++i) s += static_cast<double>(a[i]) * static_cast<double>(a[i]);
-    return std::sqrt(s);
+    return std::sqrt(deterministicSum(n, [&](int64_t i) {
+        return static_cast<double>(a[i]) * static_cast<double>(a[i]);
+    }));
 }
 
 double l2Diff(const float* a, const float* b, int n) {
-    double s = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : s)
-    for (int i = 0; i < n; ++i) {
+    return std::sqrt(deterministicSum(n, [&](int64_t i) {
         const double d = static_cast<double>(a[i]) - static_cast<double>(b[i]);
-        s += d * d;
-    }
-    return std::sqrt(s);
+        return d * d;
+    }));
 }
 
 double dotDiff(const float* s1, const float* s2, const float* y1, const float* y2, int n) {
-    double s = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : s)
-    for (int i = 0; i < n; ++i) {
+    return deterministicSum(n, [&](int64_t i) {
         const double sv = static_cast<double>(s1[i]) - static_cast<double>(s2[i]);
         const double yv = static_cast<double>(y1[i]) - static_cast<double>(y2[i]);
-        s += sv * yv;
-    }
-    return s;
+        return sv * yv;
+    });
 }
 
 class NesterovOptimizer final : public Optimizer {

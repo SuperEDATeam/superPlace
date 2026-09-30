@@ -1,5 +1,9 @@
 #include "init/quadratic_placer.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include <Eigen/IterativeLinearSolvers>
 #include <Eigen/Sparse>
 #include <algorithm>
@@ -28,47 +32,100 @@ using VecXf   = Eigen::VectorXf;
 ///   两端可移动   A[i][i]+=w  A[j][j]+=w  A[i][j]-=w  A[j][i]-=w
 ///                rhs[i] += -w(off_i - off_j)，rhs[j] 对称
 ///   一端固定     只在可移动端的对角线加 w，rhs 收固定端的绝对坐标
+/// 并行装配的每线程缓冲。
+///
+/// 按线程分桶、再按【线程号顺序】合并，与 bin_grid 的密度累加同一套路（铁律 7）：
+/// 同线程数下逐位可复现。禁止直接往共享 triplets/rhs 上并发写。
+struct AssembleScratch {
+    std::vector<std::vector<Triplet>> triplets;
+    std::vector<std::vector<float>>   rhs;
+
+    void reset(int numThreads, int nMov, size_t nnzHint) {
+        if (static_cast<int>(triplets.size()) != numThreads) {
+            triplets.assign(static_cast<size_t>(numThreads), {});
+            rhs.assign(static_cast<size_t>(numThreads), std::vector<float>());
+            for (auto& v : triplets) v.reserve(nnzHint / static_cast<size_t>(numThreads) + 64);
+            for (auto& v : rhs) v.assign(static_cast<size_t>(nMov), 0.f);
+        } else {
+            for (auto& v : triplets) v.clear();
+            for (auto& v : rhs) std::fill(v.begin(), v.end(), 0.f);
+        }
+    }
+};
+
 template <Axis A>
 void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boundMin,
               const std::vector<int>& boundMax, SpMat& mat, VecXf& rhs,
-              std::vector<Triplet>& triplets) {
+              std::vector<Triplet>& triplets, AssembleScratch& scratch, size_t nnzHint) {
     const int nMov = db.numMovable;
-    triplets.clear();
-    rhs.setZero();
-
     const float minDist = std::max(1e-6f, cfg.qp_min_distance);
 
-    for (int k = 0; k < db.numNets; ++k) {
-        const int deg = db.netDegree(k);
-        if (deg < 2 || deg > cfg.ignore_net_degree) continue;   // 超大 net 跳过，避免 O(deg²) 退化
+    int numThreads = 1;
+#ifdef _OPENMP
+    numThreads = omp_get_max_threads();
+#endif
+    scratch.reset(numThreads, nMov, nnzHint);
 
-        // 参与哪些 pin 对由 b2b_model.h 统一定义（与 test_b2b 共用同一份判定）
-        forEachB2BPair<A>(
-            db, k, boundMin[static_cast<size_t>(k)], boundMax[static_cast<size_t>(k)], minDist,
-            [&](int p, int q, float w) {
-                const int ni = db.pin2node[p];
-                const int nj = db.pin2node[q];
-                const float offI = AxisTraits<A>::offset(db, p);
-                const float offJ = AxisTraits<A>::offset(db, q);
-                const bool movI = (ni < nMov);
-                const bool movJ = (nj < nMov);
+#pragma omp parallel
+    {
+        int tid = 0;
+#ifdef _OPENMP
+        tid = omp_get_thread_num();
+#endif
+        std::vector<Triplet>& myTri = scratch.triplets[static_cast<size_t>(tid)];
+        float* myRhs = scratch.rhs[static_cast<size_t>(tid)].data();
 
-                if (movI && movJ) {
-                    triplets.emplace_back(ni, ni, w);
-                    triplets.emplace_back(nj, nj, w);
-                    triplets.emplace_back(ni, nj, -w);
-                    triplets.emplace_back(nj, ni, -w);
-                    rhs[ni] += -w * (offI - offJ);
-                    rhs[nj] += -w * (offJ - offI);
-                } else if (movI && !movJ) {
-                    triplets.emplace_back(ni, ni, w);
-                    rhs[ni] += w * (AxisTraits<A>::pinPos(db, q) - offI);
-                } else if (!movI && movJ) {
-                    triplets.emplace_back(nj, nj, w);
-                    rhs[nj] += w * (AxisTraits<A>::pinPos(db, p) - offJ);
-                }
-                // 两端都固定：对未知量无贡献
-            });
+        // 静态划分：同线程数下每个 net 固定落到同一个桶，保证可复现
+#pragma omp for schedule(static)
+        for (int k = 0; k < db.numNets; ++k) {
+            const int deg = db.netDegree(k);
+            if (deg < 2 || deg > cfg.ignore_net_degree) continue;   // 超大 net 跳过，避免 O(deg²) 退化
+
+            // 参与哪些 pin 对由 b2b_model.h 统一定义（与 test_b2b 共用同一份判定）
+            forEachB2BPair<A>(
+                db, k, boundMin[static_cast<size_t>(k)], boundMax[static_cast<size_t>(k)], minDist,
+                [&](int p, int q, float w) {
+                    const int ni = db.pin2node[p];
+                    const int nj = db.pin2node[q];
+                    const float offI = AxisTraits<A>::offset(db, p);
+                    const float offJ = AxisTraits<A>::offset(db, q);
+                    const bool movI = (ni < nMov);
+                    const bool movJ = (nj < nMov);
+
+                    if (movI && movJ) {
+                        myTri.emplace_back(ni, ni, w);
+                        myTri.emplace_back(nj, nj, w);
+                        myTri.emplace_back(ni, nj, -w);
+                        myTri.emplace_back(nj, ni, -w);
+                        myRhs[ni] += -w * (offI - offJ);
+                        myRhs[nj] += -w * (offJ - offI);
+                    } else if (movI && !movJ) {
+                        myTri.emplace_back(ni, ni, w);
+                        myRhs[ni] += w * (AxisTraits<A>::pinPos(db, q) - offI);
+                    } else if (!movI && movJ) {
+                        myTri.emplace_back(nj, nj, w);
+                        myRhs[nj] += w * (AxisTraits<A>::pinPos(db, p) - offJ);
+                    }
+                    // 两端都固定：对未知量无贡献
+                });
+        }
+    }
+
+    // 按线程号顺序合并（铁律 7：固定顺序规约）
+    rhs.setZero();
+    for (int t = 0; t < numThreads; ++t) {
+        const float* src = scratch.rhs[static_cast<size_t>(t)].data();
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < nMov; ++i) rhs[i] += src[i];
+    }
+
+    size_t totalTri = 0;
+    for (int t = 0; t < numThreads; ++t) totalTri += scratch.triplets[static_cast<size_t>(t)].size();
+    triplets.clear();
+    triplets.reserve(totalTri);
+    for (int t = 0; t < numThreads; ++t) {
+        const auto& v = scratch.triplets[static_cast<size_t>(t)];
+        triplets.insert(triplets.end(), v.begin(), v.end());
     }
 
     mat.setZero();
@@ -88,9 +145,10 @@ void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boun
 template <Axis A>
 float solveAxis(PlaceDB& db, const Config& cfg, const std::vector<int>& boundMin,
                 const std::vector<int>& boundMax, SpMat& mat, VecXf& rhs, VecXf& sol,
-                std::vector<Triplet>& triplets, double* tAssemble, double* tSolve) {
+                std::vector<Triplet>& triplets, AssembleScratch& scratch, size_t nnzHint,
+                double* tAssemble, double* tSolve) {
     Timer tA;
-    assemble<A>(db, cfg, boundMin, boundMax, mat, rhs, triplets);
+    assemble<A>(db, cfg, boundMin, boundMax, mat, rhs, triplets, scratch, nnzHint);
     *tAssemble += tA.elapsedMs();
     Timer tS;
 
@@ -150,6 +208,7 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
     }
     std::vector<Triplet> triplets;
     triplets.reserve(nnz);
+    AssembleScratch scratch;
 
     std::vector<int> bMinX, bMaxX, bMinY, bMaxY;
 
@@ -163,8 +222,10 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         const double tBounds = tB.elapsedMs();
 
         double tAsm = 0.0, tSol = 0.0;
-        const float errX = solveAxis<Axis::X>(db, cfg, bMinX, bMaxX, matX, rhsX, solX, triplets, &tAsm, &tSol);
-        const float errY = solveAxis<Axis::Y>(db, cfg, bMinY, bMaxY, matY, rhsY, solY, triplets, &tAsm, &tSol);
+        const float errX = solveAxis<Axis::X>(db, cfg, bMinX, bMaxX, matX, rhsX, solX, triplets,
+                                              scratch, nnz, &tAsm, &tSol);
+        const float errY = solveAxis<Axis::Y>(db, cfg, bMinY, bMaxY, matY, rhsY, solY, triplets,
+                                              scratch, nnz, &tAsm, &tSol);
 
         Timer tH;
         const double hpwl = computeHPWL(db);
@@ -179,11 +240,17 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         SP_INFO("  qp iter %3d: err %.3e  HPWL %.6g  (%.0f ms = bounds %.0f + assemble %.0f + solve %.0f + hpwl %.0f)",
                 iter, std::max(errX, errY), hpwl, m.elapsed_ms, tBounds, tAsm, tSol, tHpwl);
 
-        const bool converged = (errX < cfg.qp_tol && errY < cfg.qp_tol && iter > 4);
+        // 外层收敛只看【布局本身】是否还在动，不看线性求解器的残差。
+        //
+        // 早期版本写的是 `errX < cfg.qp_tol && errY < cfg.qp_tol`，与内层 BiCGSTAB
+        // 共用同一个 qp_tol。而 BiCGSTAB 恰恰是在 err < tol 时停的，于是外层一看
+        // err < tol 就宣布收敛——把内层容差从 1e-6 放松到 1e-3，外层会在第 5 轮
+        // 就退出，adaptec1 的 HPWL 从 4.10e7 劣化到 4.58e7。内层精度与外层不动点
+        // 是两件事，必须分开。
         const bool stalled = (iter > 4 && lastHpwl > 0.0 &&
-                              std::fabs(hpwl - lastHpwl) < 1e-4 * lastHpwl);
+                              std::fabs(hpwl - lastHpwl) < cfg.qp_outer_tol * lastHpwl);
         lastHpwl = hpwl;
-        if (converged || stalled || iter + 1 >= cfg.qp_max_iter) break;
+        if (stalled || iter + 1 >= cfg.qp_max_iter) break;
     }
 
     SP_INFO("quadratic: final HPWL = %.6g  (%.1f ms)", lastHpwl, total.elapsedMs());

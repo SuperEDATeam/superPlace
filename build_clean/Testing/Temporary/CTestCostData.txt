@@ -1,12 +1,13 @@
-test_parser 2 0.157556
-test_csr 2 0.00186574
-test_roundtrip 2 0.176097
-test_poisson 2 0.0135483
-test_hpwl 2 0.00666499
-test_b2b 2 0.00216174
-test_nesterov 2 0.0875503
-test_wirelength 2 0.0101948
-test_density 2 0.00873586
-test_filler 2 0.000976489
-test_macro_sa 2 0.0253814
+test_parser 1 0.259147
+test_csr 1 0.00206658
+test_roundtrip 1 0.367486
+test_poisson 1 0.0825376
+test_hpwl 1 0.01319
+test_b2b 1 0.0654503
+test_nesterov 1 0.148834
+test_wirelength 1 0.0117749
+test_density 1 0.0130412
+test_filler 1 0.00200497
+test_macro_sa 1 0.126612
+test_eplace 1 2.7043
 ---

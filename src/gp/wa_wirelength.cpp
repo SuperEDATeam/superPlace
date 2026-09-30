@@ -1,5 +1,7 @@
 #include "gp/wa_wirelength.h"
 
+#include "numeric/reduction.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -66,16 +68,17 @@ void WaWirelength::compute(const PlaceDB& db, float gamma, int ignoreNetDegree, 
     //      (1 + x_i/γ)b⁺ − c⁺/γ  =  b⁺ + [(x_i − x_max)·b⁺ − c'⁺]/γ
     //      (1 − x_i/γ)b⁻ + c⁻/γ  =  b⁻ + [c'⁻ − (x_i − x_min)·b⁻]/γ
     // ========================================================================
-    double wlTotal = 0.0;
-#pragma omp parallel for schedule(dynamic, 256) reduction(+ : wlTotal)
-    for (int k = 0; k < numNets; ++k) {
+    // 固定分块规约（铁律 7）。原先是 schedule(dynamic,256) + reduction——
+    // 那连同线程数下的求和次序都随运行时抢占情况变化，是最不可复现的一种写法。
+    const double wlTotal = deterministicSum(numNets, [&](int64_t kk) -> double {
+        const int k = static_cast<int>(kk);
         const int b = db.net2pin_start[k], e = db.net2pin_start[k + 1];
         const int deg = e - b;
         if (deg < 2 || deg > ignoreNetDegree) {
             // b⁺ = 0 作为"该 net 不参与"的标记，第二趟据此跳过
             bPosX_[static_cast<size_t>(k)] = 0.f;
             bPosY_[static_cast<size_t>(k)] = 0.f;
-            continue;
+            return 0.0;
         }
 
         float mxX = -std::numeric_limits<float>::max(), mnX = std::numeric_limits<float>::max();
@@ -119,9 +122,9 @@ void WaWirelength::compute(const PlaceDB& db, float gamma, int ignoreNetDegree, 
 
         // WA 线长：WA_x = (x_max − x_min) + c'⁺/b⁺ − c'⁻/b⁻
         // 因 c'⁺ ≤ 0、c'⁻ ≥ 0，WA 略小于 HPWL——它是 HPWL 的平滑下界，符合预期。
-        wlTotal += static_cast<double>((mxX - mnX) + cpx / bpx - cnx / bnx);
-        wlTotal += static_cast<double>((mxY - mnY) + cpy / bpy - cny / bny);
-    }
+        return static_cast<double>((mxX - mnX) + cpx / bpx - cnx / bnx) +
+               static_cast<double>((mxY - mnY) + cpy / bpy - cny / bny);
+    });
     if (outWl) *outWl = wlTotal;
 
     // ========================================================================

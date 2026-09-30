@@ -1,5 +1,7 @@
 #include "gp/bin_grid.h"
 
+#include "numeric/reduction.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -269,19 +271,20 @@ float BinGrid::overflow() const {
     const double area = static_cast<double>(binArea());
     const double target = static_cast<double>(targetDensity_);
 
-    double over = 0.0;
-    const size_t n = nodeDensity_.size();
-#pragma omp parallel for schedule(static) reduction(+ : over)
-    for (size_t b = 0; b < n; ++b) {
+    // 固定分块规约（铁律 7）：τ 是停止判据与 γ 调度的输入，
+    // 求和次序随线程数漂移会让收敛轨迹跟着变。
+    const double over = deterministicSum(static_cast<int64_t>(nodeDensity_.size()),
+                                         [&](int64_t b) -> double {
         // ρ' 只含可移动单元 + 终端 + 不可放置区域，**不含 filler**——
         // filler 是为平滑密度场人为插入的，把它计入会让 τ 永远接近目标值。
+        const size_t i = static_cast<size_t>(b);
         const double rho =
-            (static_cast<double>(nodeDensity_[b]) + terminalDensity_[b] + baseDensity_[b]) / area;
+            (static_cast<double>(nodeDensity_[i]) + terminalDensity_[i] + baseDensity_[i]) / area;
         // 必须取正部：否则稀疏 bin 的负溢出会抵消拥挤 bin 的正溢出，
         // 而总面积守恒会让 τ 近似为常数，完全失去停止判据的意义。
         const double d = rho - target;
-        if (d > 0.0) over += d * area;
-    }
+        return d > 0.0 ? d * area : 0.0;
+    });
     return static_cast<float>(over / movableAreaScaled_);
 }
 

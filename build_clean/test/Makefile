@@ -280,6 +280,20 @@ test_macro_sa/fast:
 	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_macro_sa.dir/build.make test/CMakeFiles/test_macro_sa.dir/build
 .PHONY : test_macro_sa/fast
 
+# Convenience name for target.
+test/CMakeFiles/test_eplace.dir/rule:
+	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test/CMakeFiles/test_eplace.dir/rule
+.PHONY : test/CMakeFiles/test_eplace.dir/rule
+
+# Convenience name for target.
+test_eplace: test/CMakeFiles/test_eplace.dir/rule
+.PHONY : test_eplace
+
+# fast build rule for target.
+test_eplace/fast:
+	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_eplace.dir/build.make test/CMakeFiles/test_eplace.dir/build
+.PHONY : test_eplace/fast
+
 test_b2b.o: test_b2b.cpp.o
 .PHONY : test_b2b.o
 
@@ -351,6 +365,30 @@ test_density.s: test_density.cpp.s
 test_density.cpp.s:
 	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_density.dir/build.make test/CMakeFiles/test_density.dir/test_density.cpp.s
 .PHONY : test_density.cpp.s
+
+test_eplace.o: test_eplace.cpp.o
+.PHONY : test_eplace.o
+
+# target to build an object file
+test_eplace.cpp.o:
+	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_eplace.dir/build.make test/CMakeFiles/test_eplace.dir/test_eplace.cpp.o
+.PHONY : test_eplace.cpp.o
+
+test_eplace.i: test_eplace.cpp.i
+.PHONY : test_eplace.i
+
+# target to preprocess a source file
+test_eplace.cpp.i:
+	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_eplace.dir/build.make test/CMakeFiles/test_eplace.dir/test_eplace.cpp.i
+.PHONY : test_eplace.cpp.i
+
+test_eplace.s: test_eplace.cpp.s
+.PHONY : test_eplace.s
+
+# target to generate assembly for a file
+test_eplace.cpp.s:
+	cd /home/friedrichc/Placement/build_clean && $(MAKE) $(MAKESILENT) -f test/CMakeFiles/test_eplace.dir/build.make test/CMakeFiles/test_eplace.dir/test_eplace.cpp.s
+.PHONY : test_eplace.cpp.s
 
 test_filler.o: test_filler.cpp.o
 .PHONY : test_filler.o
@@ -556,6 +594,7 @@ help:
 	@echo "... test_b2b"
 	@echo "... test_csr"
 	@echo "... test_density"
+	@echo "... test_eplace"
 	@echo "... test_filler"
 	@echo "... test_hpwl"
 	@echo "... test_macro_sa"
@@ -573,6 +612,9 @@ help:
 	@echo "... test_density.o"
 	@echo "... test_density.i"
 	@echo "... test_density.s"
+	@echo "... test_eplace.o"
+	@echo "... test_eplace.i"
+	@echo "... test_eplace.s"
 	@echo "... test_filler.o"
 	@echo "... test_filler.i"
 	@echo "... test_filler.s"

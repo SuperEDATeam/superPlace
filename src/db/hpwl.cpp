@@ -1,5 +1,7 @@
 #include "db/hpwl.h"
 
+#include "numeric/reduction.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -13,11 +15,12 @@ double computeHPWL(const PlaceDB& db) {
     const int* __restrict start = db.net2pin_start.data();
     const int* __restrict flat  = db.flat_net2pin.data();
 
-    double total = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : total)
-    for (int k = 0; k < numNets; ++k) {
+    // 固定分块规约（铁律 7）：OpenMP 的 reduction(+:) 求和次序随线程数变，
+    // HPWL 又是 λ 调度的输入，次序漂移会一路传到最终布局上。
+    const double total = deterministicSum(numNets, [&](int64_t kk) -> double {
+        const int k = static_cast<int>(kk);
         const int b = start[k], e = start[k + 1];
-        if (e - b < 2) continue;
+        if (e - b < 2) return 0.0;
 
         float lox = std::numeric_limits<float>::max(), hix = -std::numeric_limits<float>::max();
         float loy = std::numeric_limits<float>::max(), hiy = -std::numeric_limits<float>::max();
@@ -30,8 +33,8 @@ double computeHPWL(const PlaceDB& db) {
             loy = std::min(loy, py);
             hiy = std::max(hiy, py);
         }
-        total += static_cast<double>(hix - lox) + static_cast<double>(hiy - loy);
-    }
+        return static_cast<double>(hix - lox) + static_cast<double>(hiy - loy);
+    });
     return total;
 }
 

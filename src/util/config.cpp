@@ -93,6 +93,7 @@ void Config::loadJson(const std::string& path) {
     get("qp_min_distance", qp_min_distance);
     get("qp_tol", qp_tol);
     get("qp_solver_max_iter", qp_solver_max_iter);
+    get("qp_outer_tol", qp_outer_tol);
     get("ignore_net_degree", ignore_net_degree);
     get("init_method", init_method);
     get("cluster_target_count", cluster_target_count);

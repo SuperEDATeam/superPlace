@@ -15,6 +15,9 @@
 
   "init_method": "quadratic",
   "qp_max_iter": 20,
+  "qp_tol": 1e-6,
+  "qp_solver_max_iter": 100,
+  "qp_outer_tol": 1e-4,
   "qp_min_distance": 1.0,
 
   "target_density": 1.0,

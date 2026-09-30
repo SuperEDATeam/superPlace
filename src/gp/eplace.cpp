@@ -11,6 +11,7 @@
 #include "gp/filler.h"
 #include "gp/wa_wirelength.h"
 #include "numeric/optimizer.h"
+#include "numeric/reduction.h"
 #include "util/config.h"
 #include "util/logger.h"
 #include "util/metrics.h"
@@ -147,9 +148,11 @@ struct EPlace::Impl {
         // ∇D = −qξ。优化器执行 pos −= α·grad，所以这里密度项前必须是【减号】。
         // 写成加号的现象是单元越跑越挤，极易被误判成 λ 给小了。
         const int nMov = db.numMovable;
-        double sumWl = 0.0, sumDen = 0.0;
-#pragma omp parallel for schedule(static) reduction(+ : sumWl, sumDen)
-        for (int k = 0; k < n; ++k) {
+        // 固定分块规约（铁律 7）。这两个和决定 λ₀，次序漂移会让整条收敛轨迹跟着变。
+        // 用 WithWork 版本把"写梯度"和"统计范数"合在一趟里，不额外扫一遍。
+        double sumDen = 0.0;
+        const double sumWl = deterministicSumWithWork(n, [&](int64_t kk, double& accWl) {
+            const int k = static_cast<int>(kk);
             const int i = optIdx[static_cast<size_t>(k)];
             const bool hasWl = (i < nMov);
 
@@ -165,9 +168,13 @@ struct EPlace::Impl {
             grad[k] = precond * (wlx - lambda * fx);
             grad[n + k] = precond * (wly - lambda * fy);
 
-            if (hasWl) sumWl += std::fabs(wlx) + std::fabs(wly);
-            sumDen += std::fabs(fx) + std::fabs(fy);
-        }
+            if (hasWl) accWl += std::fabs(wlx) + std::fabs(wly);
+        });
+        sumDen = deterministicSum(n, [&](int64_t kk) -> double {
+            const int i = optIdx[static_cast<size_t>(kk)];
+            return std::fabs(force[static_cast<size_t>(i)]) +
+                   std::fabs(force[static_cast<size_t>(total + i)]);
+        });
         sumAbsWlGrad = sumWl;
         sumAbsDenForce = sumDen;
 

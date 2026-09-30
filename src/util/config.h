@@ -74,6 +74,13 @@ struct Config {
     int   ignore_net_degree = 100;
     /// bin 网格维度；0 表示按 05 §5.5.3 自动推算（2 的幂，上限 1024）
     int   gp_bin_dim        = 0;
+    /// 密度累加的局部网格块数。
+    ///
+    /// 【固定块数而非线程数】：清零与规约都是 O(块数 × bin 数)，若按线程数分配，
+    /// 核多的机器上这两项会盖过真正的散射计算——32 核上实测 accumulate 比 8 核
+    /// 还慢 2.7 倍、内存多吃 4 倍。固定块数同时解决三件事：耗时与内存不再随核数
+    /// 膨胀，且结果不再依赖线程数。
+    int   density_chunks    = 8;
     /// λ 调度的 ΔHPWL 参考尺度（05 §5.5.9）
     float delta_hpwl_ref    = 3.5e5f;
     /// Nesterov 是否启用 Barzilai-Borwein 步长

@@ -25,6 +25,7 @@
   "cgp_target_overflow": 0.07,
   "gp_max_iter": 1000,
   "gp_bin_dim": 0,
+  "density_chunks": 8,
   "ignore_net_degree": 100,
   "delta_hpwl_ref": 350000.0,
   "use_bb": true,

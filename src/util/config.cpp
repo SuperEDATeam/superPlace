@@ -82,6 +82,7 @@ void Config::loadJson(const std::string& path) {
     get("cgp_target_overflow", cgp_target_overflow);
     get("gp_max_iter", gp_max_iter);
     get("gp_bin_dim", gp_bin_dim);
+    get("density_chunks", density_chunks);
     get("delta_hpwl_ref", delta_hpwl_ref);
     get("use_bb", use_bb);
     get("filler_only_iters", filler_only_iters);

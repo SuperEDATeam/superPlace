@@ -103,7 +103,7 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         // 这一步之后的 τ 才是 cGP 真正要面对的初值，必须单独量出来。
         {
             BinGrid g;
-            g.initialize(db, cfg.target_density, cfg.gp_bin_dim);
+            g.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks);
             g.accumulate(db);
             double sum = 0.0, mx = 0.0;
             size_t k = 0;

@@ -6,7 +6,6 @@
 #include <cmath>
 
 #ifdef _OPENMP
-#include <omp.h>
 #endif
 
 #include "db/place_db.h"
@@ -16,14 +15,6 @@ namespace sp {
 namespace {
 
 constexpr int kMaxBinDim = 1024;
-
-int numThreads() {
-#ifdef _OPENMP
-    return omp_get_max_threads();
-#else
-    return 1;
-#endif
-}
 
 }  // namespace
 
@@ -69,7 +60,8 @@ float BinGrid::chargeWeight(const PlaceDB& db, int i, float footprintScale) cons
     return footprintScale;
 }
 
-void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverride) {
+void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverride,
+                         int chunks) {
     targetDensity_ = targetDensity;
     originX_ = db.coreRegion.lx;
     originY_ = db.coreRegion.ly;
@@ -115,9 +107,9 @@ void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverr
     fieldX_.assign(n, 0.f);
     fieldY_.assign(n, 0.f);
 
-    const int nt = numThreads();
-    localNode_.assign(static_cast<size_t>(nt), std::vector<float>(n, 0.f));
-    localFiller_.assign(static_cast<size_t>(nt), std::vector<float>(n, 0.f));
+    const int nChunks = (chunks > 0) ? chunks : 8;
+    localNode_.assign(static_cast<size_t>(nChunks), std::vector<float>(n, 0.f));
+    localFiller_.assign(static_cast<size_t>(nChunks), std::vector<float>(n, 0.f));
 
     // ---- terminalDensity：固定终端的阻塞（密度缩放施于终端）
     //
@@ -192,32 +184,26 @@ void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverr
 
 void BinGrid::accumulate(const PlaceDB& db) {
     const size_t n = static_cast<size_t>(dim_) * static_cast<size_t>(dim_);
-    const int nt = static_cast<int>(localNode_.size());
-
-    for (int t = 0; t < nt; ++t) {
-        std::fill(localNode_[static_cast<size_t>(t)].begin(),
-                  localNode_[static_cast<size_t>(t)].end(), 0.f);
-        std::fill(localFiller_[static_cast<size_t>(t)].begin(),
-                  localFiller_[static_cast<size_t>(t)].end(), 0.f);
-    }
-
+    const int nc = static_cast<int>(localNode_.size());
     const int total = db.totalNodes();
 
-    // 铁律 7：per-thread 局部网格 + 固定顺序规约。
-    // 禁止原子加——它既慢（bin 冲突频繁），又让浮点累加顺序不确定，
-    // 破坏逐位可复现。
-#pragma omp parallel
-    {
-#ifdef _OPENMP
-        const int tid = omp_get_thread_num();
-#else
-        const int tid = 0;
-#endif
-        float* __restrict ln = localNode_[static_cast<size_t>(tid)].data();
-        float* __restrict lf = localFiller_[static_cast<size_t>(tid)].data();
+    // 铁律 7：局部网格 + 固定顺序规约，禁止原子加——它既慢（bin 冲突频繁），
+    // 又让浮点累加顺序不确定。
+    //
+    // 块数固定、划分只依赖节点数，因此**与线程数无关**：32 线程时同时跑 nc 块，
+    // 4 线程时每线程轮流跑几块，两者结果逐位相同。
+    // 清零并入分块循环——原先它是一个 O(块数 × bin 数) 的串行循环，
+    // 32 核上等于串行写 3350 万个 float，占了 accumulate 的大头。
+#pragma omp parallel for schedule(dynamic, 1) num_threads(nc)
+    for (int c = 0; c < nc; ++c) {
+        float* __restrict ln = localNode_[static_cast<size_t>(c)].data();
+        float* __restrict lf = localFiller_[static_cast<size_t>(c)].data();
+        std::fill(ln, ln + n, 0.f);
+        std::fill(lf, lf + n, 0.f);
 
-#pragma omp for schedule(static)
-        for (int i = 0; i < total; ++i) {
+        const int lo = static_cast<int>(static_cast<int64_t>(total) * c / nc);
+        const int hi = static_cast<int>(static_cast<int64_t>(total) * (c + 1) / nc);
+        for (int i = lo; i < hi; ++i) {
             if (db.isFixed(i) || db.isNI(i)) continue;
 
             const Footprint f = footprintOf(db, i);
@@ -240,17 +226,21 @@ void BinGrid::accumulate(const PlaceDB& db) {
         }
     }
 
-    // 固定顺序规约：始终按线程号递增累加，保证逐位可复现
-    std::fill(nodeDensity_.begin(), nodeDensity_.end(), 0.f);
-    std::fill(fillerDensity_.begin(), fillerDensity_.end(), 0.f);
-    for (int t = 0; t < nt; ++t) {
-        const float* ln = localNode_[static_cast<size_t>(t)].data();
-        const float* lf = localFiller_[static_cast<size_t>(t)].data();
-#pragma omp parallel for schedule(static)
-        for (size_t b = 0; b < n; ++b) {
-            nodeDensity_[b] += ln[b];
-            fillerDensity_[b] += lf[b];
+    // 固定顺序规约：每个 bin 内始终按块号递增累加，保证逐位可复现。
+    // 按 bin 并行——每个 bin 只由一个线程写，块的遍历顺序与线程划分无关。
+    //
+    // 这里也钉住线程数：散射端已被 nc 限制，规约端若放任用满核数，
+    // 32 核上光线程管理就要多花 3 ms（512² 网格实测 1.97 -> 5.01 ms），
+    // 而这部分是访存受限的，多给线程并不会更快。
+#pragma omp parallel for schedule(static) num_threads(nc)
+    for (size_t b = 0; b < n; ++b) {
+        float sn = 0.f, sf = 0.f;
+        for (int c = 0; c < nc; ++c) {
+            sn += localNode_[static_cast<size_t>(c)][b];
+            sf += localFiller_[static_cast<size_t>(c)][b];
         }
+        nodeDensity_[b] = sn;
+        fillerDensity_[b] = sf;
     }
 }
 

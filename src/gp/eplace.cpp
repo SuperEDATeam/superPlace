@@ -187,7 +187,7 @@ struct EPlace::Impl {
 
 EPlace::EPlace(PlaceDB& db, const Config& cfg, MetricsSink& sink)
     : impl_(std::make_unique<Impl>(db, cfg, sink)) {
-    impl_->grid.initialize(db, cfg.target_density, cfg.gp_bin_dim);
+    impl_->grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks);
     impl_->wl.prepare(db);
     impl_->gradWl.assign(static_cast<size_t>(2 * db.numMovable), 0.f);
     impl_->force.assign(static_cast<size_t>(2 * db.totalNodes()), 0.f);

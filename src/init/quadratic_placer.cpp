@@ -1,9 +1,5 @@
 #include "init/quadratic_placer.h"
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-
 #include <Eigen/IterativeLinearSolvers>
 #include <Eigen/Sparse>
 #include <algorithm>
@@ -32,51 +28,30 @@ using VecXf   = Eigen::VectorXf;
 ///   两端可移动   A[i][i]+=w  A[j][j]+=w  A[i][j]-=w  A[j][i]-=w
 ///                rhs[i] += -w(off_i - off_j)，rhs[j] 对称
 ///   一端固定     只在可移动端的对角线加 w，rhs 收固定端的绝对坐标
-/// 并行装配的每线程缓冲。
-///
-/// 按线程分桶、再按【线程号顺序】合并，与 bin_grid 的密度累加同一套路（铁律 7）：
-/// 同线程数下逐位可复现。禁止直接往共享 triplets/rhs 上并发写。
-struct AssembleScratch {
-    std::vector<std::vector<Triplet>> triplets;
-    std::vector<std::vector<float>>   rhs;
-
-    void reset(int numThreads, int nMov, size_t nnzHint) {
-        if (static_cast<int>(triplets.size()) != numThreads) {
-            triplets.assign(static_cast<size_t>(numThreads), {});
-            rhs.assign(static_cast<size_t>(numThreads), std::vector<float>());
-            for (auto& v : triplets) v.reserve(nnzHint / static_cast<size_t>(numThreads) + 64);
-            for (auto& v : rhs) v.assign(static_cast<size_t>(nMov), 0.f);
-        } else {
-            for (auto& v : triplets) v.clear();
-            for (auto& v : rhs) std::fill(v.begin(), v.end(), 0.f);
-        }
-    }
-};
-
 template <Axis A>
+/// 装配是【串行】的，这是有意的选择。
+///
+/// 曾经并行过：按线程分桶，后果是 QP 的解随核数变（adaptec1 上 1/4/32 线程
+/// 分别给出 4.10215e7 / 4.10362e7 / 4.09846e7）。改成固定分桶能消除这一点，
+/// 但桶数是个没有原理依据的魔数，而 MMS 的最终结果对 QP 的数值细节高度敏感——
+/// 16 桶与 32 桶在 MMS adaptec1 上相差 5%，且前者有一个种子直接炸到 8.5e7。
+///
+/// 权衡下来退回串行：它天然与线程数无关、代码简单，代价只是装配从 168 ms 回到
+/// 216 ms（占 QP 总耗时约 9%）。真要提速，瓶颈其实在 setFromTriplets（占六成），
+/// 那需要自己建 CSR，不是靠并行三元组生成。
 void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boundMin,
               const std::vector<int>& boundMax, SpMat& mat, VecXf& rhs,
-              std::vector<Triplet>& triplets, AssembleScratch& scratch, size_t nnzHint) {
+              std::vector<Triplet>& triplets, size_t nnzHint) {
     const int nMov = db.numMovable;
     const float minDist = std::max(1e-6f, cfg.qp_min_distance);
 
-    int numThreads = 1;
-#ifdef _OPENMP
-    numThreads = omp_get_max_threads();
-#endif
-    scratch.reset(numThreads, nMov, nnzHint);
+    triplets.clear();
+    triplets.reserve(nnzHint);
+    rhs.setZero();
 
-#pragma omp parallel
     {
-        int tid = 0;
-#ifdef _OPENMP
-        tid = omp_get_thread_num();
-#endif
-        std::vector<Triplet>& myTri = scratch.triplets[static_cast<size_t>(tid)];
-        float* myRhs = scratch.rhs[static_cast<size_t>(tid)].data();
-
-        // 静态划分：同线程数下每个 net 固定落到同一个桶，保证可复现
-#pragma omp for schedule(static)
+        std::vector<Triplet>& myTri = triplets;
+        float* myRhs = rhs.data();
         for (int k = 0; k < db.numNets; ++k) {
             const int deg = db.netDegree(k);
             if (deg < 2 || deg > cfg.ignore_net_degree) continue;   // 超大 net 跳过，避免 O(deg²) 退化
@@ -111,23 +86,6 @@ void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boun
         }
     }
 
-    // 按线程号顺序合并（铁律 7：固定顺序规约）
-    rhs.setZero();
-    for (int t = 0; t < numThreads; ++t) {
-        const float* src = scratch.rhs[static_cast<size_t>(t)].data();
-#pragma omp parallel for schedule(static)
-        for (int i = 0; i < nMov; ++i) rhs[i] += src[i];
-    }
-
-    size_t totalTri = 0;
-    for (int t = 0; t < numThreads; ++t) totalTri += scratch.triplets[static_cast<size_t>(t)].size();
-    triplets.clear();
-    triplets.reserve(totalTri);
-    for (int t = 0; t < numThreads; ++t) {
-        const auto& v = scratch.triplets[static_cast<size_t>(t)];
-        triplets.insert(triplets.end(), v.begin(), v.end());
-    }
-
     mat.setZero();
     mat.setFromTriplets(triplets.begin(), triplets.end());   // 重复项自动累加
 
@@ -145,10 +103,10 @@ void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boun
 template <Axis A>
 float solveAxis(PlaceDB& db, const Config& cfg, const std::vector<int>& boundMin,
                 const std::vector<int>& boundMax, SpMat& mat, VecXf& rhs, VecXf& sol,
-                std::vector<Triplet>& triplets, AssembleScratch& scratch, size_t nnzHint,
-                double* tAssemble, double* tSolve) {
+                std::vector<Triplet>& triplets, size_t nnzHint, double* tAssemble,
+                double* tSolve) {
     Timer tA;
-    assemble<A>(db, cfg, boundMin, boundMax, mat, rhs, triplets, scratch, nnzHint);
+    assemble<A>(db, cfg, boundMin, boundMax, mat, rhs, triplets, nnzHint);
     *tAssemble += tA.elapsedMs();
     Timer tS;
 
@@ -208,7 +166,6 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
     }
     std::vector<Triplet> triplets;
     triplets.reserve(nnz);
-    AssembleScratch scratch;
 
     std::vector<int> bMinX, bMaxX, bMinY, bMaxY;
 
@@ -223,9 +180,9 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
 
         double tAsm = 0.0, tSol = 0.0;
         const float errX = solveAxis<Axis::X>(db, cfg, bMinX, bMaxX, matX, rhsX, solX, triplets,
-                                              scratch, nnz, &tAsm, &tSol);
+                                              nnz, &tAsm, &tSol);
         const float errY = solveAxis<Axis::Y>(db, cfg, bMinY, bMaxY, matY, rhsY, solY, triplets,
-                                              scratch, nnz, &tAsm, &tSol);
+                                              nnz, &tAsm, &tSol);
 
         Timer tH;
         const double hpwl = computeHPWL(db);

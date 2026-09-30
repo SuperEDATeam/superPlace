@@ -478,17 +478,41 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     for (int m : macros) macroArea += db.area(m);
     double wl = iwl.total(cx, cy, flipped);
 
+    // ---- 位移项：mLG 是在 mGP 的解上做【局部修补】，不是重新布图
+    //
+    // 这是本函数最重要的一项，缺了它会产生一个很隐蔽的失效：
+    // mGP 已经把密度收敛到 τ≈0.10，mLG 若只看"重叠 + 线长"，SA 会从零重新
+    // 搜索一个低重叠低线长的排布——它确实能找到，但那是【另一个】排布，
+    // 宏一挪走就压在标准单元头上，τ 随之暴涨。
+    //
+    // MMS adaptec1 实测（没有位移项时）：mLG 前重叠仅占宏面积 0.93%、几乎已合法，
+    // SA 却把宏平均搬了 987 个单位（core 宽 10692，最大搬了 9002），
+    // τ 从 0.0989 炸到 0.4515。cGP 只好把 mGP 做过的铺开再做一遍，最终线长更差。
+    //
+    // 参考长度取典型宏尺寸，于是位移以"多少个宏宽"计量，δ 才有可解释的量纲。
+    const double refLen = std::sqrt(std::max(macroArea / static_cast<double>(nM), 1.0));
+
     // 两项量纲不同（面积 vs 长度），各自除以自身参考量归一后再加权，
-    // 这样 α/β 才是可解释的"相对重要性"而不是需要反复试的魔数。
+    // 这样 α/β/δ 才是可解释的"相对重要性"而不是需要反复试的魔数。
     const double refOverlap = std::max(macroArea, 1.0);
     const double refWl = std::max(wl, 1.0);
+    const double refDisp = refLen * static_cast<double>(nM);
     constexpr double kAlpha = 8.0;   // 重叠权重远大于线长：合法性是硬约束
     constexpr double kBeta = 1.0;
+    const double kDelta = static_cast<double>(cfg.macro_sa_disp_weight);
 
     double overlap = r.overlapBefore;
-    auto cost = [&](double ov, double w) {
-        return kAlpha * ov / refOverlap + kBeta * w / refWl;
+    double disp = 0.0;   // Σ|pos − posMGP|，随移动 O(1) 增量更新
+    auto cost = [&](double ov, double w, double d) {
+        return kAlpha * ov / refOverlap + kBeta * w / refWl + kDelta * d / refDisp;
     };
+    // 某个宏当前的位移量
+    auto dispOf = [&](int s, float px, float py) {
+        return std::hypot(static_cast<double>(px - x0[static_cast<size_t>(s)]),
+                          static_cast<double>(py - y0[static_cast<size_t>(s)]));
+    };
+    for (size_t s = 0; s < nM; ++s) disp += dispOf(static_cast<int>(s), cx[s], cy[s]);
+    const double dispBefore = disp;
 
     const int moves = (cfg.macro_sa_moves > 0)
                           ? cfg.macro_sa_moves
@@ -498,13 +522,12 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     // 初温按"接受一次典型恶化的概率约为 init_accept"来定，避免拍脑袋给常数
     const double t0 = -1.0 / std::log(std::max(1e-6f, cfg.macro_sa_init_accept));
     const double tempRatio = std::max(1e-12f, cfg.macro_sa_temp_ratio);
-    const float coreW = db.coreRegion.width(), coreH = db.coreRegion.height();
 
     // SA 是随机过程，最后一个被接受的解不一定是见过的最好解——末期仍会接受恶化。
     // 必须单独记住最优解并在结束时回到它，否则无重叠的输入进来反而会被搞坏。
     std::vector<float>   bestX = cx, bestY = cy;
     std::vector<uint8_t> bestFlip = flipped;
-    double bestCost = cost(overlap, wl);
+    double bestCost = cost(overlap, wl, disp);
 
     std::vector<int>    dirty;
     std::vector<double> newVals;
@@ -513,8 +536,10 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     for (int it = 0; it < moves; ++it) {
         const double progress = static_cast<double>(it) / static_cast<double>(moves);
         const double temp = t0 * std::pow(tempRatio, progress);
-        // 步长随退火收缩：前期全局重排，后期精细微调
-        const float span = static_cast<float>(0.5 * (1.0 - progress) + 0.02);
+        // 移动幅度以【宏的典型尺寸】而非芯片尺寸为基准。
+        // 原先起步幅度是半个芯片，对一个已经接近合法的输入来说是在重新布图；
+        // 配合上面的位移项，这里只需要能跨过几个宏的距离做局部腾挪。
+        const float span = static_cast<float>(refLen * (6.0 * (1.0 - progress) + 0.5));
 
         const int s = rng.uniformInt(0, static_cast<int>(nM) - 1);
         const int op = rng.uniformInt(0, 9);   // 0-6 平移，7-8 交换，9 翻转
@@ -524,13 +549,14 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
         int s2 = -1;
         float oldX2 = 0.f, oldY2 = 0.f;
 
-        double dOverlap = 0.0;
+        double dOverlap = 0.0, dDisp = 0.0;
 
         if (op <= 6) {
-            float nx = oldX + rng.uniform(-span, span) * coreW;
-            float ny = oldY + rng.uniform(-span, span) * coreH;
+            float nx = oldX + rng.uniform(-span, span);
+            float ny = oldY + rng.uniform(-span, span);
             snap(om, s, nx, ny);
             dOverlap = om.at(s, nx, ny) - om.at(s, oldX, oldY);
+            dDisp = dispOf(s, nx, ny) - dispOf(s, oldX, oldY);
             om.setPos(s, nx, ny);
         } else if (op <= 8 && nM >= 2) {
             do {
@@ -551,6 +577,8 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             const double after = om.at(s, ax, ay) + om.at(s2, bx, by) -
                                  overlapArea(om.rectOf(s, ax, ay), om.rectOf(s2, bx, by));
             dOverlap = after - before;
+            dDisp = dispOf(s, ax, ay) - dispOf(s, oldX, oldY) + dispOf(s2, bx, by) -
+                    dispOf(s2, oldX2, oldY2);
         } else {
             // 翻转只改引脚位置，不改外形，因此重叠不变
             flipped[static_cast<size_t>(s)] = static_cast<uint8_t>(1 - oldFlip);
@@ -561,17 +589,19 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
         std::vector<double> newVals2;
         if (s2 >= 0) dWl += iwl.deltaForMacro(s2, cx, cy, flipped, dirty2, newVals2);
 
-        const double dCost = cost(overlap + dOverlap, wl + dWl) - cost(overlap, wl);
+        const double dCost =
+            cost(overlap + dOverlap, wl + dWl, disp + dDisp) - cost(overlap, wl, disp);
         const bool accept =
             (dCost <= 0.0) || (temp > 0.0 && rng.uniform(0.f, 1.f) < std::exp(-dCost / temp));
 
         if (accept) {
             overlap += dOverlap;
             wl += dWl;
+            disp += dDisp;
             iwl.commit(dirty, newVals);
             if (s2 >= 0) iwl.commit(dirty2, newVals2);
             ++r.accepted;
-            const double c = cost(overlap, wl);
+            const double c = cost(overlap, wl, disp);
             if (c < bestCost) {
                 bestCost = c;
                 bestX = cx;
@@ -590,6 +620,8 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     flipped = bestFlip;
     wl = iwl.total(cx, cy, flipped);
     overlap = om.total();
+    disp = 0.0;
+    for (size_t s = 0; s < nM; ++s) disp += dispOf(static_cast<int>(s), cx[s], cy[s]);
 
     // ---- 贪心修复：SA 是概率算法，不保证重叠恰好为 0，而"零重叠"是硬验收项。
     //
@@ -612,13 +644,16 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             const double cur = om.at(static_cast<int>(s), cx[s], cy[s]);
             if (cur <= 0.0) continue;
 
-            // 位移是这里的第一等公民：宏刚从 mGP 的线长最优位置上下来，挪得越远
-            // 线长损失越大。实测把"取重叠最小位置"放任不管（不限位移）能把残留
-            // 重叠再压低一个数量级，代价却是 mLG 的 HPWL 增量从 +16% 飙到 +35%，
-            // 最终 HPWL 劣化 17%——这笔交易不划算。故按下面的优先级挑落脚点：
+            // 位移是这里的第一等公民，而且量的是【离 mGP 原位多远】，不是离当前
+            // 位置多远——后者会让已经被挪偏的宏"就地安家"，越修越远。
             //
-            //   1. 零重叠位置中【位移最小】的；
-            //   2. 窗口内没有零重叠位置时，才退而取重叠更小的，且【位移受限】。
+            // 这一点曾经是个真实的失效源：SA 加了位移项后平均只偏 3.2 个单位，
+            // 而本段修复完又把平均位移推到 397.7，mGP 的密度分布照样被毁掉。
+            // 修复阶段必须和 SA 用同一个位移基准。
+            //
+            // 按下面的优先级挑落脚点：
+            //   1. 零重叠位置中【离原位最近】的；
+            //   2. 窗口内没有零重叠位置时，才退而取重叠更小的，且离原位不超过上限。
             float  zeroX = 0.f, zeroY = 0.f;
             double zeroDist = std::numeric_limits<double>::infinity();
             bool   haveZero = false;
@@ -630,6 +665,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             const float stepX = std::max(om.width(static_cast<int>(s)) * 0.25f, snap.site);
             const float stepY = std::max(om.height(static_cast<int>(s)) * 0.25f, snap.row);
             const int   span = 12 + 2 * pass;
+            // 允许偏离原位的上限，逐轮放宽
             const double maxDisp =
                 static_cast<double>(2 + pass) *
                 std::max(om.width(static_cast<int>(s)), om.height(static_cast<int>(s)));
@@ -639,8 +675,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
                     float nx = cx[s] + static_cast<float>(rx) * stepX;
                     float ny = cy[s] + static_cast<float>(ry) * stepY;
                     snap(om, static_cast<int>(s), nx, ny);
-                    const double d = std::hypot(static_cast<double>(nx - cx[s]),
-                                                static_cast<double>(ny - cy[s]));
+                    const double d = dispOf(static_cast<int>(s), nx, ny);   // 离 mGP 原位
                     const double o = om.at(static_cast<int>(s), nx, ny);
                     if (o <= 0.0) {
                         if (d < zeroDist) {
@@ -747,6 +782,10 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
 
     const double ms = timer.elapsedMs();
     sink.recordDuration("mLG", ms);
+    const double meanDisp = disp / static_cast<double>(nM);
+    SP_INFO("mLG: 宏平均位移 %.1f（= %.2f 个宏宽，典型宏宽 %.0f，δ=%.2f）", meanDisp,
+            meanDisp / refLen, refLen, kDelta);
+    (void)dispBefore;
     SP_INFO("mLG: %d 个宏，%d 次移动接受 %d（%.1f%%），贪心修复 %d 次",
             r.numMacros, r.moves, r.accepted,
             100.0 * r.accepted / std::max(1, r.moves), r.repaired);

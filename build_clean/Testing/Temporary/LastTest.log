@@ -1,10 +1,10 @@
-Start testing: Sep 30 09:59 CST
+Start testing: Sep 30 11:00 CST
 ----------------------------------------------------------
 1/12 Testing: test_parser
 1/12 Test: test_parser
 Command: "/home/friedrichc/Placement/build_clean/test/test_parser"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_parser" start time: Sep 30 09:59 CST
+"test_parser" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] aux: /home/friedrichc/Placement/test_data/adaptec1/adaptec1.aux
@@ -34,10 +34,10 @@ Row height / count: 12 / 890  (site step 1.000000)
 
 [PASS] test_parser (36 checks)
 <end of output>
-Test time =   0.26 sec
+Test time =   0.22 sec
 ----------------------------------------------------------
 Test Passed.
-"test_parser" end time: Sep 30 09:59 CST
+"test_parser" end time: Sep 30 11:00 CST
 "test_parser" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -45,7 +45,7 @@ Test Passed.
 2/12 Test: test_csr
 Command: "/home/friedrichc/Placement/build_clean/test/test_csr"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_csr" start time: Sep 30 09:59 CST
+"test_csr" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] aux: /home/friedrichc/Placement/test_data/thin1/thin1.aux
@@ -58,7 +58,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_csr" end time: Sep 30 09:59 CST
+"test_csr" end time: Sep 30 11:00 CST
 "test_csr" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -66,7 +66,7 @@ Test Passed.
 3/12 Test: test_roundtrip
 Command: "/home/friedrichc/Placement/build_clean/test/test_roundtrip"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_roundtrip" start time: Sep 30 09:59 CST
+"test_roundtrip" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] aux: /home/friedrichc/Placement/test_data/adaptec1/adaptec1.aux
@@ -76,10 +76,10 @@ Output:
 [INFO ] .wts applied 0 net weights (rest default 1.0)
 [PASS] test_roundtrip (4 checks)
 <end of output>
-Test time =   0.37 sec
+Test time =   0.36 sec
 ----------------------------------------------------------
 Test Passed.
-"test_roundtrip" end time: Sep 30 09:59 CST
+"test_roundtrip" end time: Sep 30 11:00 CST
 "test_roundtrip" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -87,7 +87,7 @@ Test Passed.
 4/12 Test: test_poisson
 Command: "/home/friedrichc/Placement/build_clean/test/test_poisson"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_poisson" start time: Sep 30 09:59 CST
+"test_poisson" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 backend: cpu-fftw
@@ -101,7 +101,7 @@ backend: cpu-fftw
 Test time =   0.08 sec
 ----------------------------------------------------------
 Test Passed.
-"test_poisson" end time: Sep 30 09:59 CST
+"test_poisson" end time: Sep 30 11:00 CST
 "test_poisson" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -109,7 +109,7 @@ Test Passed.
 5/12 Test: test_hpwl
 Command: "/home/friedrichc/Placement/build_clean/test/test_hpwl"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_hpwl" start time: Sep 30 09:59 CST
+"test_hpwl" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [PASS] test_hpwl (23 checks)
@@ -117,7 +117,7 @@ Output:
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"test_hpwl" end time: Sep 30 09:59 CST
+"test_hpwl" end time: Sep 30 11:00 CST
 "test_hpwl" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -125,7 +125,7 @@ Test Passed.
 6/12 Test: test_b2b
 Command: "/home/friedrichc/Placement/build_clean/test/test_b2b"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_b2b" start time: Sep 30 09:59 CST
+"test_b2b" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
   P=2            P= 2  pairs x/y =  1/ 1 (want  1)  sum x/y = 40.000001/87.000000  want 40.000000/87.000000
@@ -135,10 +135,10 @@ Output:
   buggy variant: pairs=4 (correct 7), sum=24.750000 (correct 39.000000)
 [PASS] test_b2b (178 checks)
 <end of output>
-Test time =   0.07 sec
+Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"test_b2b" end time: Sep 30 09:59 CST
+"test_b2b" end time: Sep 30 11:00 CST
 "test_b2b" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -146,7 +146,7 @@ Test Passed.
 7/12 Test: test_nesterov
 Command: "/home/friedrichc/Placement/build_clean/test/test_nesterov"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_nesterov" start time: Sep 30 09:59 CST
+"test_nesterov" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
   [isotropic]  max|x - x*| = 0.000e+00   obj = 0.000e+00
@@ -155,10 +155,10 @@ Output:
   [monotone]   100 轮中目标值上升 0 次（Nesterov 允许少量非单调）
 [PASS] test_nesterov (7 checks)
 <end of output>
-Test time =   0.15 sec
+Test time =   0.10 sec
 ----------------------------------------------------------
 Test Passed.
-"test_nesterov" end time: Sep 30 09:59 CST
+"test_nesterov" end time: Sep 30 11:00 CST
 "test_nesterov" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -166,7 +166,7 @@ Test Passed.
 8/12 Test: test_wirelength
 Command: "/home/friedrichc/Placement/build_clean/test/test_wirelength"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_wirelength" start time: Sep 30 09:59 CST
+"test_wirelength" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
   3-pin net              gamma=  50.00  max|grad|=  1.1068  max rel err = 2.305e-05  (6 点)
@@ -184,7 +184,7 @@ Output:
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"test_wirelength" end time: Sep 30 09:59 CST
+"test_wirelength" end time: Sep 30 11:00 CST
 "test_wirelength" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -192,7 +192,7 @@ Test Passed.
 9/12 Test: test_density
 Command: "/home/friedrichc/Placement/build_clean/test/test_density"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_density" start time: Sep 30 09:59 CST
+"test_density" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] bin grid: 8x8  step (8.0000, 8.0000)  backend cpu-fftw
@@ -217,10 +217,10 @@ Output:
   [bindim]   自动推算得 32
 [PASS] test_density (14 checks)
 <end of output>
-Test time =   0.01 sec
+Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"test_density" end time: Sep 30 09:59 CST
+"test_density" end time: Sep 30 11:00 CST
 "test_density" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -228,7 +228,7 @@ Test Passed.
 10/12 Test: test_filler
 Command: "/home/friedrichc/Placement/build_clean/test/test_filler"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_filler" start time: Sep 30 09:59 CST
+"test_filler" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] filler: 60 cells of 10.00x10.00 (whitespace 10000, nodeScaled 2000, fillerArea 6000)
@@ -252,7 +252,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_filler" end time: Sep 30 09:59 CST
+"test_filler" end time: Sep 30 11:00 CST
 "test_filler" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -260,43 +260,50 @@ Test Passed.
 11/12 Test: test_macro_sa
 Command: "/home/friedrichc/Placement/build_clean/test/test_macro_sa"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_macro_sa" start time: Sep 30 09:59 CST
+"test_macro_sa" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] mLG: 空间索引自检通过（6x6 网格，最大偏差 0）
-[INFO ] mLG: 16 个宏，30000 次移动接受 8940（29.8%），贪心修复 15 次
-[INFO ] mLG: 重叠 972000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4230 (+423000.00%)，23.0 ms
+[INFO ] mLG: 宏平均位移 5.0（= 0.06 个宏宽，典型宏宽 90，δ=1.00）
+[INFO ] mLG: 16 个宏，30000 次移动接受 8934（29.8%），贪心修复 15 次
+[INFO ] mLG: 重叠 972000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4230 (+423000.00%)，18.4 ms
   [overlap]  16 个宏，重叠 972000 -> 0（独立对照）
 [INFO ] mLG: 空间索引自检通过（5x5 网格，最大偏差 0）
-[INFO ] mLG: 12 个宏，30000 次移动接受 8808（29.4%），贪心修复 6 次
-[INFO ] mLG: 重叠 647400 -> 0（占宏总面积 0.0000%），HPWL 110 -> 3066 (+2687.27%)，19.4 ms
+[INFO ] mLG: 宏平均位移 155.4（= 1.30 个宏宽，典型宏宽 120，δ=1.00）
+[INFO ] mLG: 12 个宏，30000 次移动接受 7945（26.5%），贪心修复 8 次
+[INFO ] mLG: 重叠 647400 -> 0（占宏总面积 0.0000%），HPWL 110 -> 2498 (+2170.91%)，14.5 ms
   [legal]    越界 0 个，未对齐到行 0 个
 [INFO ] mLG: 空间索引自检通过（4x4 网格，最大偏差 0）
-[INFO ] mLG: 8 个宏，30000 次移动接受 8918（29.7%），贪心修复 7 次
-[INFO ] mLG: 重叠 280000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 800 (+80000.00%)，15.1 ms
+[INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
+[INFO ] mLG: 8 个宏，30000 次移动接受 8914（29.7%），贪心修复 7 次
+[INFO ] mLG: 重叠 280000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 800 (+80000.00%)，9.3 ms
   [fixed]    固定节点 0 -> 8，宏标志仍保留 8 个
 [INFO ] mLG: 无可移动宏，跳过（ISPD2005/2006 原版数据上这是正常情况）
 [INFO ] mLG: 空间索引自检通过（4x4 网格，最大偏差 0）
-[INFO ] mLG: 9 个宏，30000 次移动接受 17360（57.9%），贪心修复 0 次
-[INFO ] mLG: 重叠 0 -> 0（占宏总面积 0.0000%），HPWL 3600 -> 927 (-74.25%)，11.1 ms
-  [wl]       无重叠初值下 HPWL 3600.0 -> 927.0（比值 0.2575）
+[INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
+[INFO ] mLG: 9 个宏，30000 次移动接受 13884（46.3%），贪心修复 0 次
+[INFO ] mLG: 重叠 0 -> 0（占宏总面积 0.0000%），HPWL 3600 -> 3600 (+0.00%)，9.1 ms
+  [wl]       无重叠初值下 HPWL 3600.0 -> 3600.0（比值 1.0000）
 [INFO ] mLG: 空间索引自检通过（4x4 网格，最大偏差 0）
-[INFO ] mLG: 10 个宏，30000 次移动接受 21304（71.0%），贪心修复 0 次
-[INFO ] mLG: 重叠 182400 -> 0（占宏总面积 0.0000%），HPWL 7528 -> 2500 (-66.79%)，9.7 ms
-  [incr]     增量模型报 2500.0000，全量重算 2500.0000，相对差 0.00e+00
+[INFO ] mLG: 宏平均位移 84.3（= 1.05 个宏宽，典型宏宽 80，δ=1.00）
+[INFO ] mLG: 10 个宏，30000 次移动接受 15921（53.1%），贪心修复 1 次
+[INFO ] mLG: 重叠 182400 -> 0（占宏总面积 0.0000%），HPWL 7528 -> 7301 (-3.02%)，10.6 ms
+  [incr]     增量模型报 7301.0000，全量重算 7301.0000，相对差 0.00e+00
 [INFO ] mLG: 空间索引自检通过（5x5 网格，最大偏差 0）
-[INFO ] mLG: 14 个宏，30000 次移动接受 8942（29.8%），贪心修复 13 次
-[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，18.1 ms
+[INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
+[INFO ] mLG: 14 个宏，30000 次移动接受 8935（29.8%），贪心修复 13 次
+[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，14.0 ms
 [INFO ] mLG: 空间索引自检通过（5x5 网格，最大偏差 0）
-[INFO ] mLG: 14 个宏，30000 次移动接受 8942（29.8%），贪心修复 13 次
-[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，18.0 ms
+[INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
+[INFO ] mLG: 14 个宏，30000 次移动接受 8935（29.8%），贪心修复 13 次
+[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，14.2 ms
   [determ]   同种子两次运行，28 个坐标中不一致 0 个
 [PASS] test_macro_sa (17 checks)
 <end of output>
-Test time =   0.13 sec
+Test time =   0.09 sec
 ----------------------------------------------------------
 Test Passed.
-"test_macro_sa" end time: Sep 30 09:59 CST
+"test_macro_sa" end time: Sep 30 11:00 CST
 "test_macro_sa" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -304,7 +311,7 @@ Test Passed.
 12/12 Test: test_eplace
 Command: "/home/friedrichc/Placement/build_clean/test/test_eplace"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_eplace" start time: Sep 30 09:59 CST
+"test_eplace" start time: Sep 30 11:00 CST
 Output:
 ----------------------------------------------------------
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
@@ -313,120 +320,117 @@ Output:
 [INFO ] mGP: 13512 个节点参与优化 (bin 64x64, τ0=0.9528, λ0=1.902e-07, γ0=1178)
 [INFO ]   [mGP    0] HPWL=1.328e+05  τ=0.9528  λ=1.902e-07  γ=1178  α=1361
 [INFO ]   [mGP   20] HPWL=1.0373e+05  τ=0.7134  λ=5.046e-07  γ=346  α=172.6
-[INFO ]   [mGP   40] HPWL=1.2901e+05  τ=0.6464  λ=1.339e-06  γ=245.7  α=120.1
-[INFO ]   [mGP   60] HPWL=1.7639e+05  τ=0.6058  λ=3.552e-06  γ=199.6  α=142.6
-[INFO ]   [mGP   80] HPWL=2.2711e+05  τ=0.5610  λ=9.426e-06  γ=158.7  α=28.78
-[INFO ]   [mGP  100] HPWL=2.8329e+05  τ=0.4876  λ=2.501e-05  γ=109  α=13.39
-[INFO ]   [mGP  120] HPWL=3.3969e+05  τ=0.4010  λ=6.636e-05  γ=69.98  α=6.254
-[INFO ]   [mGP  140] HPWL=3.9199e+05  τ=0.2913  λ=0.0001761  γ=39.92  α=3.201
-[INFO ]   [mGP  160] HPWL=4.4131e+05  τ=0.1534  λ=0.0004672  γ=19.71  α=2.058
-[INFO ] mGP 结束：179 轮，HPWL=458593，τ=0.0981（达标）
-  [sign]     τ 0.9528 -> 0.0981（179 轮，达标）
-             ^ 符号(铺开) 耗时 198 ms
+[INFO ]   [mGP   40] HPWL=1.2901e+05  τ=0.6464  λ=1.339e-06  γ=245.7  α=120.2
+[INFO ]   [mGP   60] HPWL=1.7651e+05  τ=0.6095  λ=3.552e-06  γ=203.4  α=146.2
+[INFO ]   [mGP   80] HPWL=2.2817e+05  τ=0.5601  λ=9.426e-06  γ=158  α=30.54
+[INFO ]   [mGP  100] HPWL=2.8259e+05  τ=0.4889  λ=2.501e-05  γ=109.8  α=13.49
+[INFO ]   [mGP  120] HPWL=3.3894e+05  τ=0.4032  λ=6.636e-05  γ=70.77  α=6.688
+[INFO ]   [mGP  140] HPWL=3.9086e+05  τ=0.2892  λ=0.0001761  γ=39.5  α=3.36
+[INFO ]   [mGP  160] HPWL=4.4181e+05  τ=0.1497  λ=0.0004672  γ=19.35  α=2.058
+[INFO ] mGP 结束：180 轮，HPWL=459540，τ=0.0982（达标）
+  [sign]     τ 0.9528 -> 0.0982（180 轮，达标）
+             ^ 符号(铺开) 耗时 110 ms
 [INFO ] filler: 11950 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 278400, fillerArea 1147200)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13958 个节点参与优化 (bin 64x64, τ0=0.9321, λ0=2.295e-07, γ0=1060)
 [INFO ]   [mGP    0] HPWL=83780  τ=0.9321  λ=2.295e-07  γ=1060  α=1167
 [INFO ]   [mGP   20] HPWL=56298  τ=0.6992  λ=6.091e-07  γ=321.8  α=175
 [INFO ]   [mGP   40] HPWL=78732  τ=0.6486  λ=1.616e-06  γ=248.4  α=103.3
-[INFO ]   [mGP   60] HPWL=1.1534e+05  τ=0.6272  λ=4.288e-06  γ=222.6  α=66.52
-[INFO ]   [mGP   80] HPWL=1.4597e+05  τ=0.5543  λ=1.138e-05  γ=153.3  α=34.27
-[INFO ]   [mGP  100] HPWL=1.9606e+05  τ=0.4560  λ=3.019e-05  γ=92.72  α=67.19
-[INFO ]   [mGP  120] HPWL=2.1665e+05  τ=0.4046  λ=8.009e-05  γ=71.3  α=9.087
-[INFO ]   [mGP  140] HPWL=2.543e+05  τ=0.2622  λ=0.0002125  γ=34.4  α=4.693
-[INFO ]   [mGP  160] HPWL=2.868e+05  τ=0.1376  λ=0.0005638  γ=18.18  α=4.167
-[INFO ] mGP 结束：174 轮，HPWL=294370，τ=0.0974（达标）
-  [sane]     非有限坐标 0 个，越界 0 个，HPWL=294370
-             ^ 数值健全 耗时 171 ms
+[INFO ]   [mGP   60] HPWL=1.1497e+05  τ=0.6250  λ=4.288e-06  γ=220.2  α=75.95
+[INFO ]   [mGP   80] HPWL=1.4595e+05  τ=0.5546  λ=1.138e-05  γ=153.6  α=33.37
+[INFO ]   [mGP  100] HPWL=1.8151e+05  τ=0.4834  λ=3.019e-05  γ=106.7  α=14.27
+[INFO ]   [mGP  120] HPWL=2.1976e+05  τ=0.3950  λ=8.009e-05  γ=67.86  α=7.039
+[INFO ]   [mGP  140] HPWL=2.5631e+05  τ=0.2623  λ=0.0002125  γ=34.41  α=3.8
+[INFO ]   [mGP  160] HPWL=2.8783e+05  τ=0.1382  λ=0.0005638  γ=18.24  α=2.456
+[INFO ] mGP 结束：174 轮，HPWL=293168，τ=0.0997（达标）
+  [sane]     非有限坐标 0 个，越界 0 个，HPWL=293168
+             ^ 数值健全 耗时 100 ms
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 200 个节点参与优化 (bin 64x64, τ0=0.0000, λ0=0.0008784, γ0=15)
 [INFO ] mGP: τ0=0.0000 已低于阈值 0.1000，无需优化
   [noop]     τ0=0.0000 已达标；轮数=0，HPWL 143485.0000 -> 143485.0000（比值 1.000000）
-             ^ 已达标不动 耗时 2 ms
+             ^ 已达标不动 耗时 1 ms
 [WARN ] filler: whitespace*1.00 (1425600) <= node area (2018560), no filler inserted
 [INFO ] bin grid: 32x32  step (37.5000, 37.5000)  backend cpu-fftw
 [INFO ] mGP: 3040 个节点参与优化 (bin 32x32, τ0=0.9579, λ0=6.08e-08, γ0=2418)
 [INFO ]   [mGP    0] HPWL=1.3153e+05  τ=0.9579  λ=6.08e-08  γ=2418  α=885.4
-[INFO ]   [mGP   20] HPWL=1.3149e+05  τ=0.8814  λ=1.613e-07  γ=1635  α=118.7
-[INFO ]   [mGP   40] HPWL=1.5599e+05  τ=0.5419  λ=4.28e-07  γ=287.8  α=80.44
-[INFO ]   [mGP   60] HPWL=1.6426e+05  τ=0.4185  λ=1.136e-06  γ=153  α=32.59
-[INFO ]   [mGP   80] HPWL=1.9193e+05  τ=0.3666  λ=3.013e-06  γ=117.4  α=29.61
-[INFO ]   [mGP  100] HPWL=2.5777e+05  τ=0.3608  λ=7.995e-06  γ=113.9  α=9.155
-[INFO ]   [mGP  120] HPWL=3.3302e+05  τ=0.3476  λ=2.121e-05  γ=106.5  α=4.518
-[INFO ]   [mGP  140] HPWL=4.3399e+05  τ=0.3356  λ=5.628e-05  γ=100.1  α=1.971
-[INFO ]   [mGP  160] HPWL=4.9325e+05  τ=0.3128  λ=0.0001493  γ=89.12  α=1.127
-[INFO ]   [mGP  180] HPWL=5.3943e+05  τ=0.3019  λ=0.0003962  γ=84.28  α=1.177
-[INFO ]   [mGP  200] HPWL=5.5917e+05  τ=0.2972  λ=0.001051  γ=82.3  α=44.7
-[INFO ]   [mGP  220] HPWL=5.9518e+05  τ=0.3007  λ=0.002789  γ=83.76  α=1.035
-[INFO ]   [mGP  240] HPWL=6.1263e+05  τ=0.2991  λ=0.007401  γ=83.1  α=1.037
-[INFO ]   [mGP  260] HPWL=6.472e+05  τ=0.2983  λ=0.01964  γ=82.75  α=1.067
-[INFO ]   [mGP  280] HPWL=7.2246e+05  τ=0.2991  λ=0.0521  γ=83.11  α=0.8907
-[INFO ]   [mGP  300] HPWL=7.8786e+05  τ=0.2986  λ=0.1382  γ=82.86  α=0.8809
-[WARN ] mGP: τ 连续 120 轮无改善（停在 0.2987，最好 0.2973 @ 第 193 轮），判定停滞并回退到最优解
-[WARN ] mGP: 此刻 HPWL=840879，而最优解处 HPWL=557751 —— 继续跑只会让线长单调膨胀而 τ 毫无改善
-[INFO ] mGP 结束：314 轮，HPWL=557613，τ=0.2974（τ 停滞，已回退到最优解）
+[INFO ]   [mGP   20] HPWL=1.3111e+05  τ=0.8818  λ=1.613e-07  γ=1639  α=118.4
+[INFO ]   [mGP   40] HPWL=1.4884e+05  τ=0.5708  λ=4.28e-07  γ=333.6  α=75.84
+[INFO ]   [mGP   60] HPWL=1.6555e+05  τ=0.4199  λ=1.136e-06  γ=154.2  α=57.06
+[INFO ]   [mGP   80] HPWL=1.9626e+05  τ=0.3779  λ=3.013e-06  γ=124.3  α=31.03
+[INFO ]   [mGP  100] HPWL=2.6302e+05  τ=0.3622  λ=7.995e-06  γ=114.8  α=8.976
+[INFO ]   [mGP  120] HPWL=3.3399e+05  τ=0.3548  λ=2.121e-05  γ=110.5  α=3.641
+[INFO ]   [mGP  140] HPWL=4.1239e+05  τ=0.3345  λ=5.628e-05  γ=99.61  α=104.2
+[INFO ]   [mGP  160] HPWL=5.2653e+05  τ=0.3041  λ=0.0001493  γ=85.25  α=1.339
+[INFO ]   [mGP  180] HPWL=5.1789e+05  τ=0.3024  λ=0.0003962  γ=84.5  α=1.539
+[INFO ]   [mGP  200] HPWL=5.6841e+05  τ=0.2953  λ=0.001051  γ=81.5  α=1.237
+[INFO ]   [mGP  220] HPWL=5.7551e+05  τ=0.2950  λ=0.002789  γ=81.36  α=0.915
+[INFO ]   [mGP  240] HPWL=5.9957e+05  τ=0.2947  λ=0.007401  γ=81.26  α=1.256
+[WARN ] mGP: τ 连续 40 轮无改善（停在 0.2947，最好 0.2950 @ 第 202 轮），判定停滞并回退到最优解
+[WARN ] mGP: 此刻 HPWL=603897，而最优解处 HPWL=567928 —— 继续跑只会让线长单调膨胀而 τ 毫无改善
+[INFO ] mGP 结束：243 轮，HPWL=567580，τ=0.2950（τ 停滞，已回退到最优解）
 [WARN ] filler: whitespace*1.00 (1425600) <= node area (2018560), no filler inserted
 [INFO ] bin grid: 32x32  step (37.5000, 37.5000)  backend cpu-fftw
 [INFO ] mGP: 3040 个节点参与优化 (bin 32x32, τ0=0.9579, λ0=6.08e-08, γ0=2418)
 [INFO ]   [mGP    0] HPWL=1.3153e+05  τ=0.9579  λ=6.08e-08  γ=2418  α=885.4
-[INFO ]   [mGP   20] HPWL=1.3149e+05  τ=0.8814  λ=1.613e-07  γ=1635  α=118.7
-[INFO ]   [mGP   40] HPWL=1.5599e+05  τ=0.5419  λ=4.28e-07  γ=287.8  α=80.44
-[INFO ]   [mGP   60] HPWL=1.6426e+05  τ=0.4185  λ=1.136e-06  γ=153  α=32.59
-[INFO ]   [mGP   80] HPWL=1.9193e+05  τ=0.3666  λ=3.013e-06  γ=117.4  α=29.61
-[INFO ]   [mGP  100] HPWL=2.5777e+05  τ=0.3608  λ=7.995e-06  γ=113.9  α=9.155
-[INFO ]   [mGP  120] HPWL=3.3302e+05  τ=0.3476  λ=2.121e-05  γ=106.5  α=4.518
-[INFO ]   [mGP  140] HPWL=4.3399e+05  τ=0.3356  λ=5.628e-05  γ=100.1  α=1.971
-[INFO ]   [mGP  160] HPWL=4.9325e+05  τ=0.3128  λ=0.0001493  γ=89.12  α=1.127
-[INFO ]   [mGP  180] HPWL=5.3943e+05  τ=0.3019  λ=0.0003962  γ=84.28  α=1.177
-[INFO ]   [mGP  200] HPWL=5.5917e+05  τ=0.2972  λ=0.001051  γ=82.3  α=44.7
-[INFO ]   [mGP  220] HPWL=5.9518e+05  τ=0.3007  λ=0.002789  γ=83.76  α=1.035
-[INFO ]   [mGP  240] HPWL=6.1263e+05  τ=0.2991  λ=0.007401  γ=83.1  α=1.037
-[INFO ]   [mGP  260] HPWL=6.472e+05  τ=0.2983  λ=0.01964  γ=82.75  α=1.067
-[INFO ]   [mGP  280] HPWL=7.2246e+05  τ=0.2991  λ=0.0521  γ=83.11  α=0.8907
-[INFO ]   [mGP  300] HPWL=7.8786e+05  τ=0.2986  λ=0.1382  γ=82.86  α=0.8809
-[INFO ]   [mGP  320] HPWL=8.7122e+05  τ=0.2986  λ=0.3668  γ=82.87  α=0.8728
-[INFO ]   [mGP  340] HPWL=9.6466e+05  τ=0.2985  λ=0.9733  γ=82.82  α=1.227
-[INFO ]   [mGP  360] HPWL=1.0528e+06  τ=0.2986  λ=2.582  γ=82.9  α=1.51
-[INFO ]   [mGP  380] HPWL=1.1355e+06  τ=0.2985  λ=6.852  γ=82.83  α=0.9822
-[INFO ]   [mGP  400] HPWL=1.2151e+06  τ=0.2984  λ=18.18  γ=82.82  α=1.016
-[INFO ]   [mGP  420] HPWL=1.2826e+06  τ=0.2984  λ=48.24  γ=82.81  α=0.9412
-[INFO ]   [mGP  440] HPWL=1.3319e+06  τ=0.2984  λ=128  γ=82.8  α=0.9559
-[INFO ]   [mGP  460] HPWL=1.3751e+06  τ=0.2985  λ=339.6  γ=82.84  α=1.132
-[INFO ]   [mGP  480] HPWL=1.4191e+06  τ=0.2985  λ=901  γ=82.85  α=1.007
-[INFO ] mGP 结束：500 轮，HPWL=1.45167e+06，τ=0.2988（耗尽迭代上限）
+[INFO ]   [mGP   20] HPWL=1.3111e+05  τ=0.8818  λ=1.613e-07  γ=1639  α=118.4
+[INFO ]   [mGP   40] HPWL=1.4884e+05  τ=0.5708  λ=4.28e-07  γ=333.6  α=75.84
+[INFO ]   [mGP   60] HPWL=1.6555e+05  τ=0.4199  λ=1.136e-06  γ=154.2  α=57.06
+[INFO ]   [mGP   80] HPWL=1.9626e+05  τ=0.3779  λ=3.013e-06  γ=124.3  α=31.03
+[INFO ]   [mGP  100] HPWL=2.6302e+05  τ=0.3622  λ=7.995e-06  γ=114.8  α=8.976
+[INFO ]   [mGP  120] HPWL=3.3399e+05  τ=0.3548  λ=2.121e-05  γ=110.5  α=3.641
+[INFO ]   [mGP  140] HPWL=4.1239e+05  τ=0.3345  λ=5.628e-05  γ=99.61  α=104.2
+[INFO ]   [mGP  160] HPWL=5.2653e+05  τ=0.3041  λ=0.0001493  γ=85.25  α=1.339
+[INFO ]   [mGP  180] HPWL=5.1789e+05  τ=0.3024  λ=0.0003962  γ=84.5  α=1.539
+[INFO ]   [mGP  200] HPWL=5.6841e+05  τ=0.2953  λ=0.001051  γ=81.5  α=1.237
+[INFO ]   [mGP  220] HPWL=5.7551e+05  τ=0.2950  λ=0.002789  γ=81.36  α=0.915
+[INFO ]   [mGP  240] HPWL=5.9957e+05  τ=0.2947  λ=0.007401  γ=81.26  α=1.256
+[INFO ]   [mGP  260] HPWL=6.3995e+05  τ=0.2946  λ=0.01964  γ=81.19  α=1.204
+[INFO ]   [mGP  280] HPWL=7.15e+05  τ=0.2950  λ=0.0521  γ=81.35  α=1.208
+[INFO ]   [mGP  300] HPWL=7.6073e+05  τ=0.2948  λ=0.1382  γ=81.29  α=1.252
+[INFO ]   [mGP  320] HPWL=8.3744e+05  τ=0.2947  λ=0.3668  γ=81.24  α=0.9357
+[INFO ]   [mGP  340] HPWL=9.765e+05  τ=0.2946  λ=0.9733  γ=81.18  α=1.204
+[INFO ]   [mGP  360] HPWL=1.1309e+06  τ=0.2942  λ=2.582  γ=81.02  α=1.381
+[INFO ]   [mGP  380] HPWL=1.2955e+06  τ=0.2937  λ=6.852  γ=80.84  α=0.77
+[INFO ]   [mGP  400] HPWL=1.511e+06  τ=0.2915  λ=18.18  γ=79.92  α=0.9182
+[INFO ]   [mGP  420] HPWL=1.6888e+06  τ=0.2915  λ=48.24  γ=79.93  α=2.073
+[INFO ]   [mGP  440] HPWL=1.8465e+06  τ=0.2909  λ=128  γ=79.68  α=1.119
+[INFO ]   [mGP  460] HPWL=1.9605e+06  τ=0.2908  λ=339.6  γ=79.65  α=0.8361
+[INFO ]   [mGP  480] HPWL=2.0866e+06  τ=0.2918  λ=901  γ=80.05  α=0.9083
+[INFO ] mGP 结束：500 轮，HPWL=2.17392e+06，τ=0.2921（耗尽迭代上限）
   [stagnate] τ 的理论下界 ≈ 0.286（面积守恒），目标 0.10 不可达
-  [stagnate] 开保护：314 轮 τ=0.2974 HPWL=557613
-  [stagnate] 关保护：500 轮 τ=0.2988 HPWL=1.45167e+06（多跑 186 轮，线长多涨 160.3%）
-             ^ 停滞保护 耗时 707 ms
+  [stagnate] 开保护：243 轮 τ=0.2950 HPWL=567580
+  [stagnate] 关保护：500 轮 τ=0.2921 HPWL=2.17392e+06（多跑 257 轮，线长多涨 283.0%）
+             ^ 停滞保护 耗时 221 ms
 [INFO ] filler: 11950 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 278400, fillerArea 1147200)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13958 个节点参与优化 (bin 64x64, τ0=0.9321, λ0=2.295e-07, γ0=1060)
 [INFO ]   [mGP    0] HPWL=83780  τ=0.9321  λ=2.295e-07  γ=1060  α=1167
 [INFO ]   [mGP   20] HPWL=56298  τ=0.6992  λ=6.091e-07  γ=321.8  α=175
 [INFO ]   [mGP   40] HPWL=78732  τ=0.6486  λ=1.616e-06  γ=248.4  α=103.3
-[INFO ]   [mGP   60] HPWL=1.1534e+05  τ=0.6272  λ=4.288e-06  γ=222.6  α=66.52
-[INFO ]   [mGP   80] HPWL=1.4597e+05  τ=0.5543  λ=1.138e-05  γ=153.3  α=34.27
-[INFO ]   [mGP  100] HPWL=1.9606e+05  τ=0.4560  λ=3.019e-05  γ=92.72  α=67.19
-[INFO ]   [mGP  120] HPWL=2.1665e+05  τ=0.4046  λ=8.009e-05  γ=71.3  α=9.087
-[INFO ]   [mGP  140] HPWL=2.543e+05  τ=0.2622  λ=0.0002125  γ=34.4  α=4.693
-[INFO ]   [mGP  160] HPWL=2.868e+05  τ=0.1376  λ=0.0005638  γ=18.18  α=4.167
-[INFO ] mGP 结束：174 轮，HPWL=294370，τ=0.0974（达标）
+[INFO ]   [mGP   60] HPWL=1.1497e+05  τ=0.6250  λ=4.288e-06  γ=220.2  α=75.95
+[INFO ]   [mGP   80] HPWL=1.4595e+05  τ=0.5546  λ=1.138e-05  γ=153.6  α=33.37
+[INFO ]   [mGP  100] HPWL=1.8151e+05  τ=0.4834  λ=3.019e-05  γ=106.7  α=14.27
+[INFO ]   [mGP  120] HPWL=2.1976e+05  τ=0.3950  λ=8.009e-05  γ=67.86  α=7.039
+[INFO ]   [mGP  140] HPWL=2.5631e+05  τ=0.2623  λ=0.0002125  γ=34.41  α=3.8
+[INFO ]   [mGP  160] HPWL=2.8783e+05  τ=0.1382  λ=0.0005638  γ=18.24  α=2.456
+[INFO ] mGP 结束：174 轮，HPWL=293168，τ=0.0997（达标）
 [INFO ] filler: 11950 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 278400, fillerArea 1147200)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13958 个节点参与优化 (bin 64x64, τ0=0.9321, λ0=2.295e-07, γ0=1060)
 [INFO ]   [mGP    0] HPWL=83780  τ=0.9321  λ=2.295e-07  γ=1060  α=1167
 [INFO ]   [mGP   20] HPWL=56298  τ=0.6992  λ=6.091e-07  γ=321.8  α=175
 [INFO ]   [mGP   40] HPWL=78732  τ=0.6486  λ=1.616e-06  γ=248.4  α=103.3
-[INFO ]   [mGP   60] HPWL=1.1534e+05  τ=0.6272  λ=4.288e-06  γ=222.6  α=66.52
-[INFO ]   [mGP   80] HPWL=1.4597e+05  τ=0.5543  λ=1.138e-05  γ=153.3  α=34.27
-[INFO ]   [mGP  100] HPWL=1.9606e+05  τ=0.4560  λ=3.019e-05  γ=92.72  α=67.19
-[INFO ]   [mGP  120] HPWL=2.1665e+05  τ=0.4046  λ=8.009e-05  γ=71.3  α=9.087
-[INFO ]   [mGP  140] HPWL=2.543e+05  τ=0.2622  λ=0.0002125  γ=34.4  α=4.693
-[INFO ]   [mGP  160] HPWL=2.868e+05  τ=0.1376  λ=0.0005638  γ=18.18  α=4.167
-[INFO ] mGP 结束：174 轮，HPWL=294370，τ=0.0974（达标）
+[INFO ]   [mGP   60] HPWL=1.1497e+05  τ=0.6250  λ=4.288e-06  γ=220.2  α=75.95
+[INFO ]   [mGP   80] HPWL=1.4595e+05  τ=0.5546  λ=1.138e-05  γ=153.6  α=33.37
+[INFO ]   [mGP  100] HPWL=1.8151e+05  τ=0.4834  λ=3.019e-05  γ=106.7  α=14.27
+[INFO ]   [mGP  120] HPWL=2.1976e+05  τ=0.3950  λ=8.009e-05  γ=67.86  α=7.039
+[INFO ]   [mGP  140] HPWL=2.5631e+05  τ=0.2623  λ=0.0002125  γ=34.41  α=3.8
+[INFO ]   [mGP  160] HPWL=2.8783e+05  τ=0.1382  λ=0.0005638  γ=18.24  α=2.456
+[INFO ] mGP 结束：174 轮，HPWL=293168，τ=0.0997（达标）
   [determ]   27924 个坐标中不一致 0 个
-             ^ 确定性 耗时 661 ms
+             ^ 确定性 耗时 188 ms
 [INFO ] filler: 11725 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 300000, fillerArea 1125600)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13735 个节点参与优化 (bin 64x64, τ0=0.9342, λ0=2.219e-07, γ0=1071)
@@ -435,43 +439,43 @@ Output:
 [INFO ]   [mGP   40] HPWL=76515  τ=0.6270  λ=1.562e-06  γ=222.4  α=117.7
 [INFO ]   [mGP   60] HPWL=1.0345e+05  τ=0.5793  λ=4.144e-06  γ=174.3  α=68.17
 [INFO ]   [mGP   80] HPWL=1.361e+05  τ=0.5237  λ=1.1e-05  γ=131.1  α=31.98
-[INFO ]   [mGP  100] HPWL=1.8277e+05  τ=0.4323  λ=2.917e-05  γ=82.13  α=13.24
-[INFO ]   [mGP  120] HPWL=2.1492e+05  τ=0.3614  λ=7.741e-05  γ=57.14  α=7.696
-[INFO ]   [mGP  140] HPWL=2.5208e+05  τ=0.2414  λ=0.0002054  γ=30.93  α=5.098
-[INFO ]   [mGP  160] HPWL=2.8203e+05  τ=0.1327  λ=0.0005449  γ=17.73  α=4.603
-[INFO ] mGP 结束：172 轮，HPWL=288925，τ=0.0981（达标）
+[INFO ]   [mGP  100] HPWL=1.8275e+05  τ=0.4323  λ=2.917e-05  γ=82.15  α=13.2
+[INFO ]   [mGP  120] HPWL=2.1492e+05  τ=0.3613  λ=7.741e-05  γ=57.13  α=7.627
+[INFO ]   [mGP  140] HPWL=2.5248e+05  τ=0.2401  λ=0.0002054  γ=30.72  α=14.12
+[INFO ]   [mGP  160] HPWL=2.8234e+05  τ=0.1249  λ=0.0005449  γ=17.04  α=2.061
+[INFO ] mGP 结束：173 轮，HPWL=289399，τ=0.0968（达标）
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
-[INFO ] cGP: 13725 个节点参与优化 (bin 64x64, τ0=0.1533, λ0=6.27e-05, γ0=19.7)
-[INFO ]   [cGP    0] HPWL=2.8893e+05  τ=0.1533  λ=6.27e-05  γ=19.7  α=269.1
-[INFO ]   [cGP   20] HPWL=2.5305e+05  τ=0.3948  λ=0.0001664  γ=67.79  α=37.97
-[INFO ]   [cGP   40] HPWL=2.7701e+05  τ=0.2121  λ=0.0004414  γ=26.63  α=23.71
-[INFO ]   [cGP   60] HPWL=2.8862e+05  τ=0.1219  λ=0.001171  γ=16.78  α=12.24
-[INFO ]   [cGP   80] HPWL=2.9504e+05  τ=0.0768  λ=0.003108  γ=15  α=4.347
-[INFO ] cGP 结束：86 轮，HPWL=295866，τ=0.0679（达标）
+[INFO ] cGP: 13725 个节点参与优化 (bin 64x64, τ0=0.1513, λ0=6.295e-05, γ0=19.51)
+[INFO ]   [cGP    0] HPWL=2.894e+05  τ=0.1513  λ=6.295e-05  γ=19.51  α=260.5
+[INFO ]   [cGP   20] HPWL=2.5395e+05  τ=0.3930  λ=0.000167  γ=67.18  α=41.61
+[INFO ]   [cGP   40] HPWL=2.7751e+05  τ=0.2113  λ=0.0004432  γ=26.51  α=23.72
+[INFO ]   [cGP   60] HPWL=2.8918e+05  τ=0.1208  λ=0.001176  γ=16.69  α=8.516
+[INFO ]   [cGP   80] HPWL=2.9519e+05  τ=0.0760  λ=0.00312  γ=15  α=3.475
+[INFO ] cGP 结束：85 轮，HPWL=295869，τ=0.0684（达标）
   [cgp]      10 个宏中 cGP 期间发生位移的 0 个
-             ^ cGP宏冻结 耗时 721 ms
+             ^ cGP宏冻结 耗时 144 ms
 [INFO ] filler: 10500 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 417600, fillerArea 1008000)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13512 个节点参与优化 (bin 64x64, τ0=0.9528, λ0=1.902e-07, γ0=1178)
 [INFO ]   [mGP    0] HPWL=1.328e+05  τ=0.9528  λ=1.902e-07  γ=1178  α=1361
 [INFO ]   [mGP   20] HPWL=1.0373e+05  τ=0.7134  λ=5.046e-07  γ=346  α=172.6
-[INFO ]   [mGP   40] HPWL=1.2901e+05  τ=0.6464  λ=1.339e-06  γ=245.7  α=120.1
-[INFO ]   [mGP   60] HPWL=1.7639e+05  τ=0.6058  λ=3.552e-06  γ=199.6  α=142.6
-[INFO ]   [mGP   80] HPWL=2.2711e+05  τ=0.5610  λ=9.426e-06  γ=158.7  α=28.78
-[INFO ]   [mGP  100] HPWL=2.8329e+05  τ=0.4876  λ=2.501e-05  γ=109  α=13.39
-[INFO ]   [mGP  120] HPWL=3.3969e+05  τ=0.4010  λ=6.636e-05  γ=69.98  α=6.254
-[INFO ]   [mGP  140] HPWL=3.9199e+05  τ=0.2913  λ=0.0001761  γ=39.92  α=3.201
-[INFO ]   [mGP  160] HPWL=4.4131e+05  τ=0.1534  λ=0.0004672  γ=19.71  α=2.058
-[INFO ] mGP 结束：179 轮，HPWL=458593，τ=0.0981（达标）
-  [band]     179 轮收敛；HPWL 132800 -> 458593（涨 3.45x）τ=0.0981
-             ^ 质量带 耗时 242 ms
+[INFO ]   [mGP   40] HPWL=1.2901e+05  τ=0.6464  λ=1.339e-06  γ=245.7  α=120.2
+[INFO ]   [mGP   60] HPWL=1.7651e+05  τ=0.6095  λ=3.552e-06  γ=203.4  α=146.2
+[INFO ]   [mGP   80] HPWL=2.2817e+05  τ=0.5601  λ=9.426e-06  γ=158  α=30.54
+[INFO ]   [mGP  100] HPWL=2.8259e+05  τ=0.4889  λ=2.501e-05  γ=109.8  α=13.49
+[INFO ]   [mGP  120] HPWL=3.3894e+05  τ=0.4032  λ=6.636e-05  γ=70.77  α=6.688
+[INFO ]   [mGP  140] HPWL=3.9086e+05  τ=0.2892  λ=0.0001761  γ=39.5  α=3.36
+[INFO ]   [mGP  160] HPWL=4.4181e+05  τ=0.1497  λ=0.0004672  γ=19.35  α=2.058
+[INFO ] mGP 结束：180 轮，HPWL=459540，τ=0.0982（达标）
+  [band]     180 轮收敛；HPWL 132800 -> 459540（涨 3.46x）τ=0.0982
+             ^ 质量带 耗时 115 ms
 [PASS] test_eplace (24 checks)
 <end of output>
-Test time =   2.70 sec
+Test time =   0.88 sec
 ----------------------------------------------------------
 Test Passed.
-"test_eplace" end time: Sep 30 09:59 CST
-"test_eplace" time elapsed: 00:00:02
+"test_eplace" end time: Sep 30 11:00 CST
+"test_eplace" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Sep 30 09:59 CST
+End testing: Sep 30 11:00 CST

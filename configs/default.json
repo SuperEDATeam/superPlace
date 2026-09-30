@@ -33,5 +33,6 @@
 
   "macro_sa_moves": 0,
   "macro_sa_init_accept": 0.9,
-  "macro_sa_temp_ratio": 0.0001
+  "macro_sa_temp_ratio": 0.0001,
+  "macro_sa_disp_weight": 1.0
 }

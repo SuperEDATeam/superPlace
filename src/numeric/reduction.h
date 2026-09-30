@@ -28,20 +28,40 @@ inline void chunkRange(int64_t n, int c, int64_t& lo, int64_t& hi) {
     hi = n * (c + 1) / kReduceChunks;
 }
 
+/// 规模低于此值就不开并行域。
+///
+/// 开一个 OpenMP 并行域的固定开销在几微秒到几十微秒量级，而主循环每轮要调用
+/// 好几次归约。小规模下这笔开销会完全压倒计算——实测 1.3 万节点的合成用例，
+/// 32 线程（20.8 s）比 8 线程（0.73 s）慢 28 倍，全部耗在并行域的开合上。
+///
+/// 走串行路径时**分块方式完全不变**，因此结果与并行路径逐位相同，
+/// 不会引入"小用例和大用例算得不一样"这种更难查的问题。
+inline constexpr int64_t kReduceSerialBelow = 1 << 14;   // 16384
+
 /// 确定性并行求和：f(i) 返回第 i 项的贡献。
 template <typename F>
 double deterministicSum(int64_t n, F&& f) {
     if (n <= 0) return 0.0;
     std::vector<double> partial(static_cast<size_t>(kReduceChunks), 0.0);
 
-    // dynamic,1 只影响哪个线程领到哪一块，不影响块的划分与合并次序
+    if (n < kReduceSerialBelow) {
+        for (int c = 0; c < kReduceChunks; ++c) {
+            int64_t lo = 0, hi = 0;
+            chunkRange(n, c, lo, hi);
+            double s = 0.0;
+            for (int64_t i = lo; i < hi; ++i) s += f(i);
+            partial[static_cast<size_t>(c)] = s;
+        }
+    } else {
+        // dynamic,1 只影响哪个线程领到哪一块，不影响块的划分与合并次序
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int c = 0; c < kReduceChunks; ++c) {
-        int64_t lo = 0, hi = 0;
-        chunkRange(n, c, lo, hi);
-        double s = 0.0;
-        for (int64_t i = lo; i < hi; ++i) s += f(i);
-        partial[static_cast<size_t>(c)] = s;
+        for (int c = 0; c < kReduceChunks; ++c) {
+            int64_t lo = 0, hi = 0;
+            chunkRange(n, c, lo, hi);
+            double s = 0.0;
+            for (int64_t i = lo; i < hi; ++i) s += f(i);
+            partial[static_cast<size_t>(c)] = s;
+        }
     }
 
     double total = 0.0;
@@ -56,13 +76,23 @@ double deterministicSumWithWork(int64_t n, F&& body) {
     if (n <= 0) return 0.0;
     std::vector<double> partial(static_cast<size_t>(kReduceChunks), 0.0);
 
+    if (n < kReduceSerialBelow) {
+        for (int c = 0; c < kReduceChunks; ++c) {
+            int64_t lo = 0, hi = 0;
+            chunkRange(n, c, lo, hi);
+            double s = 0.0;
+            for (int64_t i = lo; i < hi; ++i) body(i, s);
+            partial[static_cast<size_t>(c)] = s;
+        }
+    } else {
 #pragma omp parallel for schedule(dynamic, 1)
-    for (int c = 0; c < kReduceChunks; ++c) {
-        int64_t lo = 0, hi = 0;
-        chunkRange(n, c, lo, hi);
-        double s = 0.0;
-        for (int64_t i = lo; i < hi; ++i) body(i, s);
-        partial[static_cast<size_t>(c)] = s;
+        for (int c = 0; c < kReduceChunks; ++c) {
+            int64_t lo = 0, hi = 0;
+            chunkRange(n, c, lo, hi);
+            double s = 0.0;
+            for (int64_t i = lo; i < hi; ++i) body(i, s);
+            partial[static_cast<size_t>(c)] = s;
+        }
     }
 
     double total = 0.0;

@@ -6,6 +6,10 @@
 
 #include "db/hpwl.h"
 #include "db/place_db.h"
+#include <cmath>
+#include <vector>
+
+#include "gp/bin_grid.h"
 #include "gp/eplace.h"
 #include "gp/filler.h"
 #include "lg/macro_sa.h"
@@ -83,8 +87,41 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
     if (movableMacros == 0) {
         SP_INFO("gp: 无可移动宏，mLG / FILLERONLY / cGP 三阶段跳过");
     } else {
+        // mLG 前的宏位置，用于量化"宏被挪了多远"——这是理解 mLG 与 cGP
+        // 之间取舍的关键量，见下面对 τ 的对照。
+        std::vector<float> preX, preY;
+        for (int i = 0; i < db.numMovable; ++i) {
+            if (!db.isMacro(i)) continue;
+            preX.push_back(db.node_x[static_cast<size_t>(i)]);
+            preY.push_back(db.node_y[static_cast<size_t>(i)]);
+        }
+
         // ---- 阶段二：mLG（宏模拟退火合法化，结束后宏被钉死）
         const MacroSaResult mlg = legalizeMacros(db, cfg, sink);
+
+        // mLG 把宏钉死会改变密度场的构成（宏从可移动电荷变成固定阻挡），
+        // 这一步之后的 τ 才是 cGP 真正要面对的初值，必须单独量出来。
+        {
+            BinGrid g;
+            g.initialize(db, cfg.target_density, cfg.gp_bin_dim);
+            g.accumulate(db);
+            double sum = 0.0, mx = 0.0;
+            size_t k = 0;
+            for (int i = 0; i < db.numMovable; ++i) {
+                if (!db.isMacro(i)) continue;
+                const double d = std::hypot(db.node_x[static_cast<size_t>(i)] - preX[k],
+                                            db.node_y[static_cast<size_t>(i)] - preY[k]);
+                sum += d;
+                mx = std::max(mx, d);
+                ++k;
+            }
+            const double meanDisp = k ? sum / static_cast<double>(k) : 0.0;
+            SP_INFO("mLG 后：τ=%.4f（cGP 的实际初值），宏位移 均值 %.1f / 最大 %.1f",
+                    g.overflow(), meanDisp, mx);
+            sink.setSummary("mlg_overflow_after", g.overflow());
+            sink.setSummary("mlg_macro_disp_mean", meanDisp);
+            sink.setSummary("mlg_macro_disp_max", mx);
+        }
         sink.setSummary("mlg_overlap_before", mlg.overlapBefore);
         sink.setSummary("mlg_overlap_after", mlg.overlapAfter);
         sink.setSummary("mlg_hpwl", mlg.hpwlAfter);

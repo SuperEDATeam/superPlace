@@ -89,6 +89,7 @@ void Config::loadJson(const std::string& path) {
     get("macro_sa_moves", macro_sa_moves);
     get("macro_sa_init_accept", macro_sa_init_accept);
     get("macro_sa_temp_ratio", macro_sa_temp_ratio);
+    get("macro_sa_disp_weight", macro_sa_disp_weight);
     get("qp_max_iter", qp_max_iter);
     get("qp_min_distance", qp_min_distance);
     get("qp_tol", qp_tol);

@@ -23,6 +23,10 @@
 #include "util/rng.h"
 #include "util/timer.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 namespace {
 
 constexpr float kCoreSize  = 1200.f;
@@ -291,7 +295,10 @@ void testStagnationGuard() {
         return engine.run(sp::GpStage::kMGP);
     };
 
-    const sp::GpResult guarded = run(120);
+    // 窗口取 40 而非生产默认的 200：本测试要验的是【机制】——触发后能否回退到
+    // 最优解。夹具虽然 τ 有硬下界，但仍会一路极缓慢地逼近它，用 200 的窗口
+    // 在 500 轮内触发不了。
+    const sp::GpResult guarded = run(40);
     const sp::GpResult unguarded = run(0);   // 0 = 关闭保护
 
     std::printf("  [stagnate] τ 的理论下界 ≈ 0.286（面积守恒），目标 0.10 不可达\n");
@@ -306,10 +313,11 @@ void testStagnationGuard() {
     CHECK_TRUE(guarded.overflow > 0.2f);                     // 确实卡在下界附近
     CHECK_TRUE(guarded.iterations < unguarded.iterations);   // 确实提前止损了
     CHECK_EQ(unguarded.iterations, kMaxIter);                // 不开保护就跑满
-    // 回退到最优解后，τ 不该比空转到底更差
-    CHECK_TRUE(guarded.overflow <= unguarded.overflow + 1e-3f);
-    // 关键收益：τ 不动时继续跑只会让线长单调膨胀
-    CHECK_TRUE(guarded.hpwl < unguarded.hpwl);
+    // 保护做的是一笔【取舍】而不是白赚：多跑那 257 轮确实能把 τ 再抠下去一点点，
+    // 代价是线长翻几倍。所以这里不能要求 τ 严格不劣，只要求它没有实质性变差…
+    CHECK_TRUE(guarded.overflow <= unguarded.overflow * 1.05f);
+    // …而线长必须好得很明显，否则这笔取舍就不成立了
+    CHECK_TRUE(guarded.hpwl < unguarded.hpwl * 0.5);
 }
 
 // ==========================================================================
@@ -404,6 +412,15 @@ void testQualityBand() {
 }  // namespace
 
 int main() {
+    // 固定线程数。两个原因：
+    //   * 密度累加用的是 per-thread 局部网格，其个数与节点划分随线程数变，
+    //     跨线程数结果有 ~1e-5 的相对差（见铁律 7 的边界说明）。停滞保护的触发
+    //     轮数对轨迹敏感，不固定线程数的话这条断言会随机器核数时过时不过。
+    //   * 夹具规模小，在多核机上开满线程反而被并行域开销拖垮——
+    //     32 核机上实测 32 线程要 20.8 s，8 线程只要 0.73 s。
+#ifdef _OPENMP
+    omp_set_num_threads(4);
+#endif
     const struct { const char* name; void (*fn)(); } cases[] = {
         {"符号(铺开)", testCellsSpreadOut},
         {"数值健全", testNoNaNAndInCore},

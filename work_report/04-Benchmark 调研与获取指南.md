@@ -14,7 +14,7 @@
 
 - [0. 结论速览](#0-结论速览)
 - [1. 两个硬性筛选条件](#1-两个硬性筛选条件)
-- [2. 当前数据的致命缺口](#2-当前数据的致命缺口)
+- [2. 混合尺寸数据的真实情况](#2-混合尺寸数据的真实情况)
 - [3. BookShelf 系（可直接使用）](#3-bookshelf-系可直接使用)
 - [4. LEF/DEF 系（需扩展解析器）](#4-lefdef-系需扩展解析器)
 - [5. 规模与性能预估](#5-规模与性能预估)
@@ -28,17 +28,24 @@
 
 | 套件 | 格式 | 设计数 | 规模范围 | 可移动宏 | 直接可用 | 可获取性 | 优先级 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **MMS** | BookShelf | 16 | 211k–2.6M | ✅ **有** | ✅ | ⚠️ 需注册 | **P0** |
-| **ISPD 2005** | BookShelf | 8 | 211k–2.18M | ❌ 全固定 | ✅ | ✅ 实测可下 | **P1** |
-| **ISPD 2006** | BookShelf | 8 | 330k–2.51M | ❌ 全固定 | ✅ | ✅ 实测可下 | **P2** |
+| **MMS** | BookShelf | 16 | 211k–2.6M | ✅ **全部** | ✅ | ❌ 需付费订阅 | **P0** |
+| **ISPD 2005** | BookShelf | 8 | 211k–2.18M | ⚠️ 仅 bigblue3 | ✅ | ✅ 已下载 | **P1** |
+| **ISPD 2006** | BookShelf | 8 | 330k–2.51M | ✅ **newblue1** | ✅ | ✅ 已下载 | **P1** |
 | **DAC 2012** | BookShelf | 10 | ~400k–2M | ❌ | ✅ | ⚠️ 需另找源 | P3 |
 | **ICCAD 2015** | BookShelf + 时序 | 8 | ~400k–2M | ❌ | ✅ | ✅ Google Drive | P3 |
 | ISPD 2015 | LEF/DEF | 8 | 中等 | — | ❌ | ✅ 实测可下 | 暂不 |
 | ISPD 2018/2019 | LEF/DEF | 10 | 中等 | — | ❌ | ✅ 实测可下 | 暂不 |
 | TILOS MacroPlacement | RTL + LEF/DEF | 6 | 18k–360k flop | ✅ **有** | ❌ 需转换 | ✅ GitHub | 暂不 |
 
-**一句话建议**：先用一条命令拉下 ISPD2005 全套（103 MB，立刻获得 211k→2.18M 的完整规模阶梯），
-同时想办法搞到 MMS（唯一能验证课程核心目标"混合尺寸布局"的数据）。
+**一句话建议**：ISPD2005 + ISPD2006 全 16 个设计已下载（见 [§6.1](#61-2026-10-02-复测与实际下载结果)），
+规模阶梯 21 万 → 251 万齐备。混合尺寸用 **ISPD2006 newblue1**（原版自带 64 个可移动宏，
+占可移动面积 53.7%）加我们自己重建的 MMS；官方 MMS 需付费订阅，暂不可得。
+
+> ⚠️ **本文档 2026-10-02 做过一次系统性更正。** 初版有两处结论是从 `test_data/` 仅有的
+> 3 个设计外推出来的，拿到全套后发现不成立：
+> ① "ISPD2005/2006 原版将所有宏单元固定"——错，见 [§2](#2-混合尺寸数据的真实情况)；
+> ② "MMS 是唯一能验证混合尺寸的数据"——错，newblue1 就可以。
+> 另有一处下载源结论已失效（`ispd.cc` 当时判为反爬，实为限流）。
 
 ---
 
@@ -62,27 +69,61 @@ mGP/cGP 阶段切换等代码路径**永远不会被执行**——跑再多设�
 
 ---
 
-## 2. 当前数据的致命缺口
+## 2. 混合尺寸数据的真实情况
 
-统计 `test_data/` 三个 benchmark 的可移动宏单元数
-（判据：`.nodes` 中非 `terminal` 且高度 ≠ 行高 12）：
+> **本节已于 2026-10-02 整节重写。** 原标题是"当前数据的致命缺口"，结论是
+> "ISPD2005/2006 原版将所有宏单元固定，MMS 是唯一可行的混合尺寸数据"。
+> 那个结论是**从 `test_data/` 仅有的 adaptec1 / adaptec4 / thin1 三个设计外推**出来的。
+> 拿到全部 16 个设计后实测，外推不成立。
 
-| benchmark | 总单元 | 固定终端 | **可移动宏** |
+### 2.1 `test_data/` 三个设计确实全为 0
+
+（判据：`.nodes` 中非 `terminal` 且高度 > 1.5 倍行高）
+
+| benchmark | 总单元 | 固定终端 | 可移动宏 |
 | --- | --- | --- | --- |
 | adaptec1 | 210,904 | 543 | **0** |
 | adaptec4 | 494,716 | 1,329 | **0** |
 | thin1 | 3 | 1 | **0** |
 
-**三个全为 0。** ISPD2005/2006 原版将所有宏单元固定，非 terminal 单元的高度一律等于行高，
-即清一色标准单元。
+这一部分没错，错在由此推广到整个套件。
 
-> **旁证**：参考实现 easyPlace 的 `main/ePlace_main.cpp:130` 是
+### 2.2 全套实测：三个设计原版就带可移动宏
+
+| 设计 | 可移动宏 | 占可移动面积 | 高度分布（行数） | 面积 > 1e5 的真大宏 |
+| --- | --- | --- | --- | --- |
+| **ispd2006/newblue1** | **64** | **53.7%** | 2 行 ×11、19/23/29/49/59 行各若干 | **45 个**，最大 5986×4728 |
+| ispd2005/bigblue3 | 2485 | 6.4% | **2 行 ×2480**、3 行 ×1、18 行 ×3、132 行 ×1 | 4 个 |
+| ispd2006/newblue2 | 3723 | 6.6% | **2 行 ×3723**（全部） | **0 个** |
+| *对照*：mms/adaptec1 | 63 | 56.9% | — | 57 个 |
+
+**两类要分开看，这是关键区别：**
+
+- **newblue1 是真正的混合尺寸设计**：64 个宏占可移动面积 53.7%，其中 45 个是大宏，
+  与我们重建的 MMS adaptec1（63 个宏、56.9%）完全同量级。
+  **它足以真实地压测宏密度缩放、mLG 合法化、mGP/cGP 切换全部路径。**
+- **bigblue3 与 newblue2 的"宏"几乎全是双高单元**（2 行高）。它们会让
+  `isMacro > 0` 成立、从而触发四阶段代码路径，但宏只占 6% 面积、几乎没有大块，
+  **能跑通不等于压测到**。newblue2 更极端：3723 个"宏"里一个大宏都没有。
+
+> 这也提醒 `isMacro(i) = !isFixed(i) && h > rowHeight*1.5`（见 05 §5.1.2）这个判据的
+> 性质：它识别的是"比标准单元高"，不是"是大宏"。双高单元会被判为宏。
+> 这对密度缩放是合理的（它们确实不是标准行单元），但**不能用宏的个数来判断
+> 一个设计是否适合做混合尺寸压测**，要看宏占面积的比例。
+
+### 2.3 修正后的结论
+
+原结论"MMS 是必需品"**不成立**：ISPD2006 newblue1 就能真实执行并压测混合尺寸路径。
+
+但 MMS 仍然有价值，理由变了——不再是"唯一可行"，而是**覆盖面**：
+它给出 16 个规模从 21 万到 251 万、全部带可移动宏的设计，便于观察宏数量与规模
+对算法的影响；而原版里真正可用的只有 newblue1 一个。
+
+> **旁证仍然成立**：easyPlace 的 `main/ePlace_main.cpp:130` 是
 > `if (placedb->dbMacroCount > 0 && !gArg.CheckExist("nomLG"))`，
-> 因此在 adaptec1 / adaptec4 上 **mLG → FILLERONLY → cGP 三阶段流程从未被执行过**。
-> 它实现的 ePlace-MS 三阶段在这两个 benchmark 上是死代码——这也解释了作者为何在
-> 宏单元密度缩放处留下一串 `?????`（`eplace.cpp:560`），他根本无从测试。
-
-**结论：MMS 不是"锦上添花"，而是验证课程核心目标的必需品。**
+> 因此在 adaptec1 / adaptec4 上 **mLG → FILLERONLY → cGP 三阶段从未被执行过**，
+> 它的 ePlace-MS 三阶段在这两个设计上是死代码——这解释了作者为何在宏密度缩放处
+> 留下一串 `?????`（`eplace.cpp:560`）。换成 newblue1 或 MMS 就能跑到。
 
 ---
 
@@ -109,7 +150,7 @@ mGP/cGP 阶段切换等代码路径**永远不会被执行**——跑再多设�
 | 途径 | 状态 | 说明 |
 | --- | --- | --- |
 | 爱荷华州立原站 `public.iastate.edu/~zijunyan` | ❌ **已失效** | 论文中给出的官方地址 |
-| IEEE DataPort，DOI `10.21227/2n68-tx57` | ⚠️ 需注册 | 重建版，379.72 MB，BookShelf 格式，覆盖全部 16 个设计 |
+| IEEE DataPort，DOI `10.21227/2n68-tx57` | ❌ **需付费订阅** | 379.72 MB，覆盖 16 个设计。页面原文 "Subscription Required — This dataset requires an IEEE DataPort Subscription to access"。且这是 2025-08-15 由第三方上传的重传（标题 "…for LightPlace"），非 DAC 2009 官方发布 |
 | 自行从 ISPD2005 重建 | ✅ 可行 | 见[附录](#附录从-ispd2005-自行重建-mms) |
 
 > DREAMPlace 仓库 `~/DREAMPlace/test/mms/` 已备好 16 个 json 配置文件
@@ -120,7 +161,8 @@ mGP/cGP 阶段切换等代码路径**永远不会被执行**——跑再多设�
 
 **定位**：布局领域被引用最多的 benchmark 套件，来自 IBM 的真实 ASIC 设计。
 
-**特点**：8 个设计，21 万 → 218 万单元，宏单元全部固定。
+**特点**：8 个设计，21 万 → 218 万单元。宏单元**基本**固定——唯一的例外是 bigblue3，
+它有 2485 个非 terminal 的高单元，但其中 2480 个只是双高单元（见 [§2.2](#22-全套实测三个设计原版就带可移动宏)）。
 adaptec2/adaptec3 含大型固定块，bigblue3 含可移动宏（原版中亦被固定）。
 
 | 设计 | 对象数 | 可移动 | 线网数 | 引脚数 | 密度 |
@@ -297,7 +339,7 @@ TILOS-AI 研究所维护，是 Google Nature 论文（RL 宏布局）的开源�
 | ISPD2015 打包版 | `http://www.cerc.utexas.edu/~zixuan/ispd2015dp.tar.xz` | ✅ 200 | 169 MB |
 | ISPD2019 test1 | `https://www.ispd.cc/contests/19/benchmarks/ispd19_test1.tgz` | ✅ 200 | — |
 | TILOS MacroPlacement | `https://github.com/TILOS-AI-Institute/MacroPlacement` | ✅ 200 | — |
-| MMS 重建版 | IEEE DataPort DOI `10.21227/2n68-tx57` | ⚠️ 需注册 | 379 MB |
+| MMS 第三方重传 | IEEE DataPort DOI `10.21227/2n68-tx57` | ❌ **需付费订阅** | 379 MB |
 | ICCAD2015 `.ot` | Google Drive `1xeauwLR9lOxnYvsK2JGPSY0INQh8VuE4` | ⚠️ 未验证 | — |
 | ICCAD2015 `.hs` | Google Drive `1HsAW_qcRje_-Ex1anWqAEQOKpGeCxpZa` | ⚠️ 未验证 | — |
 | MMS 原站 | `public.iastate.edu/~zijunyan` | ❌ **已失效** | — |
@@ -306,23 +348,108 @@ TILOS-AI 研究所维护，是 Google Nature 论文（RL 宏布局）的开源�
 > ⚠️ 目录列表（`.../contests/19/benchmarks/`、`.../~zixuan/`）返回 403，
 > 这只是禁止列目录，**具体文件仍可下载**，不要被误导。
 
-### 6.1 ⚠️ 2026-09-29 复测：两个源均已不可自动下载
+### 6.1 2026-10-02 复测与实际下载结果
 
-M3 实施时重新验证，上表中 2026-09-09 记录的两条结论都已失效：
+**ISPD2005 + ISPD2006 全 16 个设计已下载到本地并通过解析器验证。**
 
 | 源 | 现状 | 说明 |
 | --- | --- | --- |
-| UT Austin 打包版 | **403 Forbidden** | 已从"实测 200"变为拒绝访问 |
-| `ispd.cc` | **反爬挑战页** | `HEAD` 仍返回 200，但 `GET` 实际返回一个 12 KB 的 HTML 页（内含 `setTimeout(reload)` 的 JS 挑战），不是 tar。换浏览器 UA 无效 |
+| `ispd.cc` | ✅ **可用** | 16 个设计全部返回真实 gzip 数据 |
+| UT Austin 打包版 | ❌ **403** | 2026-09-29 起拒绝访问，至今未恢复 |
+| IEEE DataPort（MMS） | ❌ **需付费订阅** | 页面明确写 "Subscription Required"，见 [§3.1](#31-mmsmodern-mixed-size-优先级最高) |
 
-> **教训**：`curl -sSI`（HTTP HEAD）不足以验证可下载性。反爬站点对 HEAD 放行、
-> 对 GET 返回挑战页，HEAD 的 200 是**假阳性**。验证下载源必须实际 `GET` 并
-> `file` 检查产物类型。
+> ⚠️ **更正 2026-09-29 的记录。** 当时判定 `ispd.cc` 有反爬保护（`GET` 返回 12 KB 的
+> JS 挑战页）。实为**短时间密集请求触发的限流**，不是永久封锁——下载时每个文件之间
+> `sleep 2` 即可，16 个全部一次成功。
 
-**这不阻塞 M3。** `test_data/adaptec1` 与 `adaptec4` 本身就是 ISPD2005 原版
-（文件头为 `UCLA nodes 1.0` / `Jan 6 2005` / IBM Austin），可直接作为重建输入，
-见[附录](#附录从-ispd2005-自行重建-mms)。完整 8 个设计的规模阶梯属 M6 范围，
-届时需人工下载或另寻镜像。
+**两条仍然有效的教训：**
+
+1. **`curl -sSI`（HTTP HEAD）不足以验证可下载性。** 限流状态下服务器对 HEAD 放行、
+   对 GET 返回挑战页，HEAD 的 200 是**假阳性**。验证下载源必须实际 `GET` 下来再
+   `file` 检查类型。本文档 2026-09-09 那张"实测 200"的表就是这么错的。
+2. **`wget` 成功退出不代表拿到了数据。** 它会把挑战页当正常内容保存。必须校验：
+
+   ```bash
+   file benchmarks/_dl/*.tar.gz | grep -v gzip   # 有输出就是没下对
+   gzip -t benchmarks/_dl/*.tar.gz
+   ```
+
+### 6.2 实测下载命令与两个坑
+
+```bash
+mkdir -p benchmarks/_dl && cd benchmarks/_dl
+B=https://www.ispd.cc/contests/05/ispd05-contest
+C=https://www.ispd.cc/contests/06/contest
+
+# 坑一：ISPD2005 的 8 个设计分处两个路径
+for d in adaptec1 adaptec3; do wget -q -c "$B/$d.tar.gz"; sleep 2; done
+for d in adaptec2 adaptec4 bigblue1 bigblue2 bigblue3 bigblue4; do
+  wget -q -c "$B/benchmarks/$d.tar.gz"; sleep 2
+done
+# ISPD2006 路径统一
+for d in adaptec5 newblue1 newblue2 newblue3 newblue4 newblue5 newblue6 newblue7; do
+  wget -q -c "$C/$d.tar.gz"; sleep 2
+done
+```
+
+**坑一：ISPD2005 的包分处两个路径。** 只有 `adaptec1` 与 `adaptec3` 在 `ispd05-contest/`
+根下，其余 6 个在 `ispd05-contest/benchmarks/` 子目录。放错得到 404。
+
+**坑二：包内有两种结构，且都是二次压缩。**
+
+| 包 | 内部结构 |
+| --- | --- |
+| adaptec1、adaptec3、全部 ISPD2006 | 平铺：`adaptec1.aux.gz` … |
+| adaptec2、adaptec4、bigblue1-4 | 多一层同名目录：`./adaptec2/adaptec2.aux.gz` … |
+
+统一用一种方式解包，后 6 个会多套一层目录导致 `.aux` 找不到。解包后还要再 `gunzip` 一次：
+
+```bash
+cd benchmarks
+for f in _dl/*.tar.gz; do
+  d=$(basename "$f" .tar.gz); suite=ispd2005
+  case "$d" in adaptec5|newblue*) suite=ispd2006;; esac
+  mkdir -p "$suite/$d"
+  # 靠包内首项是否含 "/" 区分两种结构
+  if tar tzf "$f" | head -1 | sed 's|^\./||' | grep -q '/'; then
+    tar xzf "$f" -C "$suite/$d" --strip-components=1
+  else
+    tar xzf "$f" -C "$suite/$d"
+  fi
+  gunzip -f "$suite/$d"/*.gz
+done
+```
+
+**实测体积**：压缩包 271 MB，解压后 ISPD2005 968 MB + ISPD2006 1.4 GB，
+`benchmarks/` 总计约 2.7 GB（已在 `.gitignore` 内）。
+
+**验证**：16 个设计全部用 `--stage parse` 读通，对象数/线网数/引脚数与
+[§6.3](#63-全套实测统计) 的文献值一致。
+
+### 6.3 全套实测统计
+
+`--stage parse` 的输出（2026-10-02）：
+
+| 设计 | 对象数 | 固定 | 线网 | 引脚 | 可移动宏 |
+| --- | --- | --- | --- | --- | --- |
+| ispd2005/adaptec1 | 211,447 | 543 | 221,142 | 944,053 | 0 |
+| ispd2005/adaptec2 | 255,023 | 566 | 266,009 | 1,069,482 | 0 |
+| ispd2005/adaptec3 | 451,650 | 723 | 466,758 | 1,875,039 | 0 |
+| ispd2005/adaptec4 | 496,045 | 1,329 | 515,951 | 1,912,420 | 0 |
+| ispd2005/bigblue1 | 278,164 | 560 | 284,479 | 1,144,691 | 0 |
+| ispd2005/bigblue2 | 557,866 | 23,084 | 577,235 | 2,122,282 | 0 |
+| ispd2005/bigblue3 | 1,096,812 | 1,293 | 1,123,170 | 3,833,218 | **2,485** |
+| ispd2005/bigblue4 | 2,177,353 | 8,170 | 2,229,886 | 8,900,078 | 0 |
+| ispd2006/adaptec5 | 843,128 | 646 | 867,798 | 3,493,147 | 0 |
+| ispd2006/newblue1 | 330,474 | 337 | 338,901 | 1,244,342 | **64** |
+| ispd2006/newblue2 | 441,516 | 1,277 | 465,219 | 1,773,855 | **3,723** |
+| ispd2006/newblue3 | 494,011 | 11,178 | 552,199 | 1,929,892 | 0 |
+| ispd2006/newblue4 | 646,139 | 3,422 | 637,051 | 2,499,178 | 0 |
+| ispd2006/newblue5 | 1,233,058 | 4,881 | 1,284,251 | 4,957,843 | 0 |
+| ispd2006/newblue6 | 1,255,039 | 6,889 | 1,288,443 | 5,307,594 | 0 |
+| ispd2006/newblue7 | 2,507,954 | 26,582 | 2,636,820 | 10,104,920 | 0 |
+
+宏的**性质**差异见 [§2.2](#22-全套实测三个设计原版就带可移动宏)——个数不等于可压测性。
 
 ---
 
@@ -332,7 +459,7 @@ M3 实施时重新验证，上表中 2026-09-09 记录的两条结论都已失�
 
 | 优先级 | 动作 | 理由 |
 | --- | --- | --- |
-| **P0** | 获取 **MMS** | 唯一能让"混合尺寸布局"这一课程核心目标真正被执行的数据。IEEE DataPort 需注册；若受阻，按附录方案自行重建 |
+| **P0** | **ISPD2006 newblue1** | 原版自带 64 个可移动宏、占可移动面积 53.7%，是**无需任何重建**就能真实压测混合尺寸的设计。官方 MMS 需付费订阅，而 newblue1 已在本地 |
 | **P1** | 下载 **ISPD2005 全套** | 一条命令 103 MB，立刻获得 211k → 2.18M 完整规模阶梯，用于性能、内存与数值稳定性验证。**成本最低、收益最直接** |
 | **P2** | 下载 **ISPD2006** + inflated 版 | 8 个不同密度目标（0.5~0.9）验证 `targetDensity` 适应性；inflated 版做高利用率压力测试 |
 | P3 | DAC2012 / ICCAD2015 superblue | 白拿 18 个 BookShelf 用例，但需先找到 DAC2012 的下载源 |

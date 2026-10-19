@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -26,6 +27,86 @@ const ImVec4 kKindColor[] = {
 
 void glfwErrorCb(int code, const char* desc) {
     std::fprintf(stderr, "[glfw] %d: %s\n", code, desc);
+}
+
+bool fileExists(const char* p) {
+    if (!p || !*p) return false;
+    FILE* f = std::fopen(p, "rb");
+    if (!f) return false;
+    std::fclose(f);
+    return true;
+}
+
+/// 问 fontconfig 要一个真正带中文字形的字体。
+///
+/// 只靠硬编码路径不够：各发行版的字体目录各不相同，而 fontconfig 在任何
+/// 桌面 Linux 上都有。
+///
+/// ⚠️ 这里**必须用 `fc-list` 而不是 `fc-match`**。`fc-match` 永远会返回一个
+/// "最佳匹配"，哪怕那个字体一个汉字都没有——本机实测它对 `:lang=zh` 返回
+/// DejaVuSans，结果既渲染不出中文，又盖掉了后面本来能命中的候选路径。
+/// `fc-list :lang=zh` 只列出真正声明了中文覆盖的字体，没有就返回空。
+std::string queryFontconfig() {
+    FILE* pipe = popen("fc-list :lang=zh --format='%{file}\\n' 2>/dev/null", "r");
+    if (!pipe) return {};
+    char line[1024];
+    std::string found;
+    while (std::fgets(line, sizeof(line), pipe)) {
+        std::string p(line);
+        while (!p.empty() && (p.back() == '\n' || p.back() == '\r')) p.pop_back();
+        if (fileExists(p.c_str())) {
+            found = p;
+            break;
+        }
+    }
+    pclose(pipe);
+    return found;
+}
+
+/// 按"环境变量 → fontconfig → 常见路径"的顺序找中文字体。
+void loadCjkFont(ImGuiIO& io) {
+    std::string path;
+    const char* env = std::getenv("SUPERPLACE_FONT");
+    if (fileExists(env)) {
+        path = env;
+    } else {
+        if (env && *env)
+            std::fprintf(stderr, "[font] SUPERPLACE_FONT 指向的文件不存在：%s\n", env);
+        path = queryFontconfig();
+    }
+    if (path.empty()) {
+        // fontconfig 不可用时的兜底。覆盖 Debian/Ubuntu、Fedora、Arch、openSUSE
+        // 以及 WSL 借用 Windows 字体这几种情况。
+        static const char* kCandidates[] = {
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",   // Debian/Ubuntu
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", // Fedora
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",        // Arch
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/arphic/uming.ttc",
+            "/mnt/c/Windows/Fonts/msyh.ttc",                            // WSL 借 Windows
+        };
+        for (const char* c : kCandidates) {
+            if (fileExists(c)) {
+                path = c;
+                break;
+            }
+        }
+    }
+
+    if (path.empty()) {
+        std::fprintf(stderr,
+                     "[font] 未找到中文字体，界面中文会显示为方块。装一个即可：\n"
+                     "       Debian/Ubuntu: sudo apt install fonts-noto-cjk\n"
+                     "       Fedora:        sudo dnf install google-noto-sans-cjk-fonts\n"
+                     "       Arch:          sudo pacman -S noto-fonts-cjk\n"
+                     "       或用 SUPERPLACE_FONT=/path/to/font.ttc 指定\n");
+        return;
+    }
+    io.Fonts->AddFontFromFileTTF(path.c_str(), 17.0f, nullptr,
+                                 io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+    std::fprintf(stderr, "[font] %s\n", path.c_str());
 }
 
 std::string human(long long v) {
@@ -101,20 +182,7 @@ bool App::initWindow() {
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;   // 多面板停靠
     io.IniFilename = "superplace-gui.ini";              // 记住用户的面板布局
     ImGui::StyleColorsLight();
-    // 中文字形：系统有 Noto CJK 就加载，没有就退回默认字体（界面仍可用，只是中文显示为方块）
-    static const char* kFonts[] = {
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/mnt/c/Windows/Fonts/msyh.ttc",
-    };
-    for (const char* f : kFonts) {
-        if (FILE* fp = std::fopen(f, "rb")) {
-            std::fclose(fp);
-            io.Fonts->AddFontFromFileTTF(f, 17.0f, nullptr,
-                                         io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
-            break;
-        }
-    }
+    loadCjkFont(io);
 
     ImGui_ImplGlfw_InitForOpenGL(window_, true);
     ImGui_ImplOpenGL3_Init("#version 330");

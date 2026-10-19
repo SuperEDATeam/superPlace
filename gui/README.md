@@ -45,8 +45,20 @@ echo 'export GALLIUM_DRIVER=d3d12' >> ~/.bashrc && source ~/.bashrc
 **不需要** FFTW / Eigen / libpng / OpenMP——那些是算法侧的依赖。
 ImGui 与 ImPlot 已 vendor 在 `third_party/`，构建不需要联网。
 
-> `GALLIUM_DRIVER=d3d12` 不是可选项。WSL2 默认走 `llvmpipe` 软件光栅化，
-> 33 万个矩形会卡成幻灯片；切过去之后是 RTX 4060 的 D3D12 硬件加速。
+> ⚠️ `GALLIUM_DRIVER=d3d12` **只对 WSL2 有效，原生 Linux 上不要设**。
+> WSL2 默认走 `llvmpipe` 软件光栅化，33 万个矩形会卡成幻灯片，切过去才是硬件加速；
+> 原生 Linux 有真正的 GPU 驱动，设了反而会去找不存在的 d3d12 后端。
+
+还要装一个中文字体，否则界面中文显示为方块（程序会在 stderr 提示）：
+
+```bash
+sudo apt install fonts-noto-cjk               # Debian/Ubuntu
+# Fedora: google-noto-sans-cjk-fonts   Arch: noto-fonts-cjk
+# 或指定：export SUPERPLACE_FONT=/path/to/font.ttc
+```
+
+**其他发行版**：需要的只是 C++17 编译器、CMake ≥ 3.20、GLFW ≥ 3.3 开发包，
+包名对照表见文档 §7.1b。本工程没有任何 WSL 专属依赖。
 
 ## 构建与运行
 

@@ -77,7 +77,9 @@ python3 scripts/make_gif.py results/adaptec1
 用 MMS 重建脚本得到含可移动宏的数据：
 
 ```bash
-python3 scripts/make_mms.py test_data/adaptec1 benchmarks/mms/adaptec1
+# 官方 MMS 已在 benchmarks/mms/（16 个设计，全部自带可移动宏）
+# 下面这条是重建脚本，仅作应急，**不要用它覆盖官方数据**（adaptec4 的重建结果是错的）
+# python3 scripts/make_mms.py test_data/adaptec1 /tmp/mms_rebuild/adaptec1
 ```
 
 得到 63 个可移动宏（占可移动面积 56.9%），详见

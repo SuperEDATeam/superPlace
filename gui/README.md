@@ -20,7 +20,19 @@
 还有两处横跨契约两侧的死代码（`summary.json` 从没被读过、`names.txt` 有读取端
 没有生成端），适合拿来上手。
 
-完整的 14 条工作清单见文档 §8.2。
+完整工作清单（13 个任务，每个都带做法、坑与验收标准）见文档 **§9**。
+
+任务按**会动到什么**分三级，顺序也是按这个排的：
+
+| 级别 | 含义 | 规则 |
+| --- | --- | --- |
+| **【A】** | 只动 `gui/` | 自行推进，不必打招呼 |
+| **【B】** | 要改 `scripts/make_viz.py`（共享契约） | **改前知会**，`--verify` 把关 |
+| **【C】** | 涉及算法语义，或要改算法侧代码 | **开发前必须与算法侧确认方案** |
+
+前两批（T1–T8）全是【A】，可以完全自主推进一到两周。
+**【C】类（T11 实时四阶段、T12 暂停/停止）请不要直接动手**——
+尤其 T12：`EPlace::run()` 目前没有任何中断机制，必须算法侧先加 abort 路径。
 
 ## 装依赖（一次性）
 
@@ -52,13 +64,36 @@ cd gui && ./build/superplace-viz                        # 默认加载合成样�
 | `--screenshot out.ppm` | 保存截图 |
 | `--shot-after 秒` | 跑 UI 到点自动截图退出，用于脚本化出图 |
 
-## 换真实数据
+## 测试数据：clone 下来只有合成样本
+
+`test_data/`、`benchmarks/`、`results/` **全都在 `.gitignore` 里**
+（125 MB / 2.7 GB / 1.2 GB）。新 clone 的仓库里唯一的数据就是
+`sample-data/synthetic`，所以**实时模式一开始跑不起来**（没有任何 `.aux`）。
+
+**第一档 · 仓库自带**：`sample-data/synthetic`，14,681 节点 / 40 帧。
+覆盖全部节点形态（标准单元、可移动宏、core 外的固定 pad、零面积 `terminal_NI`、
+filler）与一条完整收敛过程。**功能正确性在它上面验完基本就够了。**
+
+**第二档 · 本地现造大样本**（测性能用，仍不需要 benchmark）：
+
+```bash
+python3 scripts/make_viz.py --synthetic --cells 160000 --macros 236 \
+                            --frames 6 --out /tmp/viz/big
+#  -> 357,217 节点，20 MB，1 秒内生成；实测渲染 1.55 ms/帧
+cd gui && ./build/superplace-viz /tmp/viz/big --bench 150
+```
+
+**第三档 · 真实数据**：**自己下载不到**（ISPD 两个源都已失效），需要向
+算法侧的人要。推荐让他直接给打包好的 bundle（newblue1 三帧 tar.gz 仅 4 MB），
+而不是原始 benchmark（40 MB+）。只有要调试实时模式时才需要原始 `.aux`。
+
+拿到真实 benchmark 后自己生成 bundle：
 
 ```bash
 # 在仓库根目录
 python3 scripts/make_viz.py --aux benchmarks/ispd2006/newblue1/newblue1.aux \
-                            --result results/audit/newblue1 --out /tmp/viz/newblue1
-cd gui && ./build/superplace-viz /tmp/viz/newblue1 --frame -1
+                            --result results/audit/newblue1 --out data/newblue1
+cd gui && ./build/superplace-viz data/newblue1 --frame -1
 ```
 
 ## 实时模式（可选）

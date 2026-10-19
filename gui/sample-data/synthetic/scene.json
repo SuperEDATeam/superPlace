@@ -209,21 +209,21 @@
       "label": "cGP iter 390"
     }
   ],
-  "nodeCount": 8080,
+  "nodeCount": 14681,
   "core": {
     "lx": 0.0,
     "ly": 0.0,
-    "hx": 4000.0,
-    "hy": 4000.0
+    "hx": 2268.0,
+    "hy": 2268.0
   },
   "chip": {
-    "lx": -100.0,
-    "ly": -100.0,
-    "hx": 4100.0,
-    "hy": 4100.0
+    "lx": -60.0,
+    "ly": -60.0,
+    "hx": 2328.0,
+    "hy": 2328.0
   },
   "rowHeight": 12.0,
-  "rows": 333,
+  "rows": 189,
   "hasMetrics": true,
   "hasSummary": false,
   "segments": {
@@ -237,7 +237,7 @@
     ],
     "filler": [
       4080,
-      8080
+      14681
     ]
   }
 }

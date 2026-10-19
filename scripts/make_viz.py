@@ -247,8 +247,15 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
     零面积 terminal_NI、filler，以及"从中心一团逐步铺开"的收敛过程。
     """
     rng = random.Random(seed)
-    core = {"lx": 0.0, "ly": 0.0, "hx": 4000.0, "hy": 4000.0}
     row_h = 12.0
+
+    # core 尺寸由单元总面积反推，目标利用率 ~55%。
+    # 写死成固定尺寸的话，节点数一调大（比如造 16 万节点做性能测试）单元面积就会
+    # 超过 core，可用空白变成负数、filler 数归零，样本随即失真。
+    avg_cell_area = 18.0 * row_h
+    est_area = (n_cells * avg_cell_area + n_macros * 270.0 * 300.0) / 0.55
+    side = math.ceil(math.sqrt(max(est_area, 1.0)) / row_h) * row_h
+    core = {"lx": 0.0, "ly": 0.0, "hx": side, "hy": side}
 
     sizes: list[tuple[float, float]] = []
     flags: list[int] = []
@@ -263,8 +270,9 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
     n_movable = len(sizes)
     # 3) 固定 I/O pad，贴在 core 外一圈（真实数据就是这样，前端不能假设都在 core 内）
     n_pads = 48
+    pad_w = max(40.0, side / 100.0)
     for _ in range(n_pads):
-        sizes.append((40.0, 20.0))
+        sizes.append((pad_w, pad_w * 0.5))
         flags.append(F_FIXED)
     # 4) 零面积 terminal_NI，必须被前端跳过而不是画成退化矩形
     for _ in range(8):
@@ -276,7 +284,6 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
     used = sum(w * h for w, h in sizes[:n_movable])
     fw, fh = 14.0, row_h
     n_filler = max(0, int((free * 0.9 - used) / (fw * fh)))
-    n_filler = min(n_filler, n_cells)        # 合成样本不必铺满，控制体积
     for _ in range(n_filler):
         sizes.append((fw, fh))
         flags.append(F_FILLER)
@@ -286,19 +293,20 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
     fixed_pos: dict[int, tuple[float, float]] = {}
     for k in range(n_pads):
         i = n_movable + k
-        side, t = k % 4, (k // 4) / max(1, n_pads // 4 - 1)
-        span = 3600.0 * t + 200.0
+        which, t = k % 4, (k // 4) / max(1, n_pads // 4 - 1)
+        span = side * 0.9 * t + side * 0.05
+        lo, hi = -pad_w, side + pad_w * 0.5   # 贴在 core 外一圈
         fixed_pos[i] = {
-            0: (span, -40.0), 1: (span, 4040.0),
-            2: (-40.0, span), 3: (4040.0, span),
-        }[side]
+            0: (span, lo), 1: (span, hi),
+            2: (lo, span), 3: (hi, span),
+        }[which]
     for k in range(8):
-        fixed_pos[n_movable + n_pads + k] = (rng.uniform(0, 4000), rng.uniform(0, 4000))
+        fixed_pos[n_movable + n_pads + k] = (rng.uniform(0, side), rng.uniform(0, side))
 
     bundle = Bundle(out, "synthetic")
     bundle.write_geometry(sizes, flags)
 
-    cx0, cy0 = 2000.0, 2000.0
+    cx0, cy0 = side * 0.5, side * 0.5
     # 每个节点一个最终目标位置；按 t 从"中心一团"插值到目标，模拟 ePlace 的铺开过程
     targets = []
     for i in range(n_total):
@@ -335,7 +343,8 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
                      f"{1e5 * (1 - 0.5 * t):.4f},{8e4 * (1 - 0.3 * t):.4f},0,{f * 42.0:.1f}")
     (out / "metrics.csv").write_text("\n".join(lines) + "\n")
 
-    chip = {"lx": -100.0, "ly": -100.0, "hx": 4100.0, "hy": 4100.0}
+    margin = pad_w * 1.5
+    chip = {"lx": -margin, "ly": -margin, "hx": side + margin, "hy": side + margin}
     bundle.finish(core=core, chip=chip, rowHeight=row_h,
                   rows=int((core["hy"] - core["ly"]) / row_h),
                   hasMetrics=True, hasSummary=False,

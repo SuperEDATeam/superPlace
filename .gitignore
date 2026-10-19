@@ -6,7 +6,11 @@
 # 此条保留作为护栏，防止日后误将其放回项目内
 # 注意：third_party/ 下的 CImg.h 与 nlohmann/json.hpp 是【有意提交】的。
 baseline_/
-benchmarks/
+# benchmarks 的数据体积 5 GB 不进 git，但保留 README（说明该下载什么、从哪下）。
+# 必须写成 benchmarks/* 而不是 benchmarks/——后者会让 git 根本不进入该目录，
+# 否定规则 !benchmarks/README.md 就不会生效。
+benchmarks/*
+!benchmarks/README.md
 build/
 compile_commands.json
 pdf/

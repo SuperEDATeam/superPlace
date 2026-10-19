@@ -1,0 +1,13 @@
+# 构建产物
+build/
+build-int/
+
+# ImGui 记住的面板布局，因人而异
+superplace-gui.ini
+
+# 真实 benchmark 的 bundle 体积很大（newblue1 三帧就 11 MB），不进仓库。
+# 需要时用 scripts/make_viz.py 现场生成。
+data/
+
+# 注意：third_party/（vendor 的 ImGui 与 ImPlot）**要**进仓库——
+# 本机到 GitHub 的 git clone 不通，vendor 是唯一能让队友 clone 即构建的办法。

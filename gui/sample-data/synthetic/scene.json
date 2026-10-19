@@ -1,0 +1,243 @@
+{
+  "format": "superplace-viz/1",
+  "benchmark": "synthetic",
+  "flagBits": {
+    "macro": 1,
+    "fixed": 2,
+    "filler": 4,
+    "ni": 8
+  },
+  "frames": [
+    {
+      "file": "frames/f0000.bin",
+      "stage": "mGP",
+      "label": "mGP iter 0"
+    },
+    {
+      "file": "frames/f0001.bin",
+      "stage": "mGP",
+      "label": "mGP iter 10"
+    },
+    {
+      "file": "frames/f0002.bin",
+      "stage": "mGP",
+      "label": "mGP iter 20"
+    },
+    {
+      "file": "frames/f0003.bin",
+      "stage": "mGP",
+      "label": "mGP iter 30"
+    },
+    {
+      "file": "frames/f0004.bin",
+      "stage": "mGP",
+      "label": "mGP iter 40"
+    },
+    {
+      "file": "frames/f0005.bin",
+      "stage": "mGP",
+      "label": "mGP iter 50"
+    },
+    {
+      "file": "frames/f0006.bin",
+      "stage": "mGP",
+      "label": "mGP iter 60"
+    },
+    {
+      "file": "frames/f0007.bin",
+      "stage": "mGP",
+      "label": "mGP iter 70"
+    },
+    {
+      "file": "frames/f0008.bin",
+      "stage": "mGP",
+      "label": "mGP iter 80"
+    },
+    {
+      "file": "frames/f0009.bin",
+      "stage": "mGP",
+      "label": "mGP iter 90"
+    },
+    {
+      "file": "frames/f0010.bin",
+      "stage": "mGP",
+      "label": "mGP iter 100"
+    },
+    {
+      "file": "frames/f0011.bin",
+      "stage": "mGP",
+      "label": "mGP iter 110"
+    },
+    {
+      "file": "frames/f0012.bin",
+      "stage": "mGP",
+      "label": "mGP iter 120"
+    },
+    {
+      "file": "frames/f0013.bin",
+      "stage": "mGP",
+      "label": "mGP iter 130"
+    },
+    {
+      "file": "frames/f0014.bin",
+      "stage": "mGP",
+      "label": "mGP iter 140"
+    },
+    {
+      "file": "frames/f0015.bin",
+      "stage": "mGP",
+      "label": "mGP iter 150"
+    },
+    {
+      "file": "frames/f0016.bin",
+      "stage": "mGP",
+      "label": "mGP iter 160"
+    },
+    {
+      "file": "frames/f0017.bin",
+      "stage": "mGP",
+      "label": "mGP iter 170"
+    },
+    {
+      "file": "frames/f0018.bin",
+      "stage": "mGP",
+      "label": "mGP iter 180"
+    },
+    {
+      "file": "frames/f0019.bin",
+      "stage": "mGP",
+      "label": "mGP iter 190"
+    },
+    {
+      "file": "frames/f0020.bin",
+      "stage": "mGP",
+      "label": "mGP iter 200"
+    },
+    {
+      "file": "frames/f0021.bin",
+      "stage": "mGP",
+      "label": "mGP iter 210"
+    },
+    {
+      "file": "frames/f0022.bin",
+      "stage": "mGP",
+      "label": "mGP iter 220"
+    },
+    {
+      "file": "frames/f0023.bin",
+      "stage": "mGP",
+      "label": "mGP iter 230"
+    },
+    {
+      "file": "frames/f0024.bin",
+      "stage": "mGP",
+      "label": "mGP iter 240"
+    },
+    {
+      "file": "frames/f0025.bin",
+      "stage": "mGP",
+      "label": "mGP iter 250"
+    },
+    {
+      "file": "frames/f0026.bin",
+      "stage": "mGP",
+      "label": "mGP iter 260"
+    },
+    {
+      "file": "frames/f0027.bin",
+      "stage": "mGP",
+      "label": "mGP iter 270"
+    },
+    {
+      "file": "frames/f0028.bin",
+      "stage": "mGP",
+      "label": "mGP iter 280"
+    },
+    {
+      "file": "frames/f0029.bin",
+      "stage": "mGP",
+      "label": "mGP iter 290"
+    },
+    {
+      "file": "frames/f0030.bin",
+      "stage": "cGP",
+      "label": "cGP iter 300"
+    },
+    {
+      "file": "frames/f0031.bin",
+      "stage": "cGP",
+      "label": "cGP iter 310"
+    },
+    {
+      "file": "frames/f0032.bin",
+      "stage": "cGP",
+      "label": "cGP iter 320"
+    },
+    {
+      "file": "frames/f0033.bin",
+      "stage": "cGP",
+      "label": "cGP iter 330"
+    },
+    {
+      "file": "frames/f0034.bin",
+      "stage": "cGP",
+      "label": "cGP iter 340"
+    },
+    {
+      "file": "frames/f0035.bin",
+      "stage": "cGP",
+      "label": "cGP iter 350"
+    },
+    {
+      "file": "frames/f0036.bin",
+      "stage": "cGP",
+      "label": "cGP iter 360"
+    },
+    {
+      "file": "frames/f0037.bin",
+      "stage": "cGP",
+      "label": "cGP iter 370"
+    },
+    {
+      "file": "frames/f0038.bin",
+      "stage": "cGP",
+      "label": "cGP iter 380"
+    },
+    {
+      "file": "frames/f0039.bin",
+      "stage": "cGP",
+      "label": "cGP iter 390"
+    }
+  ],
+  "nodeCount": 8080,
+  "core": {
+    "lx": 0.0,
+    "ly": 0.0,
+    "hx": 4000.0,
+    "hy": 4000.0
+  },
+  "chip": {
+    "lx": -100.0,
+    "ly": -100.0,
+    "hx": 4100.0,
+    "hy": 4100.0
+  },
+  "rowHeight": 12.0,
+  "rows": 333,
+  "hasMetrics": true,
+  "hasSummary": false,
+  "segments": {
+    "movable": [
+      0,
+      4024
+    ],
+    "fixed": [
+      4024,
+      4080
+    ],
+    "filler": [
+      4080,
+      8080
+    ]
+  }
+}

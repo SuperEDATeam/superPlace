@@ -13,6 +13,7 @@
 // 铁律 1：本文件不得出现任何布局概念，它只是一个求和工具。
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 

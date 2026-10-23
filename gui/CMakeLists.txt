@@ -161,6 +161,25 @@ if(SUPERPLACE_ROOT)
   elseif(TARGET PkgConfig::FFTW3)
     target_link_libraries(superplace-gui PRIVATE PkgConfig::FFTW3)
   endif()
+
+  # T11：实时源四阶段序列的无头测试（不开窗口、不建 GL 上下文）。
+  # 只在集成模式下存在——它要链 libsuperplace 才能真正跑引擎。
+  add_executable(viz_live_tests
+    test/test_live_stages.cpp
+    src/viz/live_source.cpp
+  )
+  target_include_directories(viz_live_tests PRIVATE
+    src ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
+  target_compile_definitions(viz_live_tests PRIVATE
+    TINY_MACROS_AUX="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/tiny_macros/tiny.aux")
+  target_link_libraries(viz_live_tests PRIVATE ${SUPERPLACE_LIB}
+    OpenMP::OpenMP_CXX PNG::PNG Eigen3::Eigen Threads::Threads)
+  if(TARGET PkgConfig::FFTW3F)
+    target_link_libraries(viz_live_tests PRIVATE PkgConfig::FFTW3F)
+  elseif(TARGET PkgConfig::FFTW3)
+    target_link_libraries(viz_live_tests PRIVATE PkgConfig::FFTW3)
+  endif()
+  add_test(NAME viz_live_tests COMMAND viz_live_tests)
 else()
   message(STATUS "独立模式：只构建 superplace-viz（不需要任何算法侧依赖）")
 endif()

@@ -2,8 +2,8 @@
 
 > 本轮为**初版（Round 1）**，交独立检查者审查；后续 review 意见按轮次追加在文末。
 > 代码全部留在 `gui/`，未 commit/push/PR/merge；未改根 `src/`、`test/`、根
-> `CMakeLists.txt`、`configs/`、`scripts/make_viz.py`、`work_report/`、
-> `gui/src/viz/live_source.cpp`。
+> `CMakeLists.txt`、`configs/`、`scripts/make_viz.py`、`work_report/`。
+> Round 1 未改 `live_source.cpp`；T11 后续轮次（见文末）在授权范围内改了该文件接四阶段。
 
 ## 1. 可构建点（检查者直接复现）
 
@@ -68,8 +68,9 @@ cd gui && ./build/superplace-viz
 ## 4. 已知缺口（非本轮范围，供检查者判断）
 
 - T9 names.txt 名称生成（生成端）、T10 网表连接性与 net 高亮/着色（无 nets.bin 时
-  显式禁用、不伪造）、T11 实时四阶段、
-  T12 暂停/停止：均属本轮授权边界之外，未实施（非仅缺样本）。
+  显式禁用、不伪造）、T12 暂停/单步/停止：属本轮授权边界之外，未实施（非仅缺样本）。
+- T11 实时四阶段已完成（`live_source.cpp` 内接好 mGP→mLG→FILLERONLY→cGP；
+  newblue1 原版 64 宏上端到端跑通并与同配 CLI 对拍 HPWL，相对误差约 7e-11，宏 mLG 后冻结）。
 - 合成样本无 summary.json，T1 仅逻辑单测 + 临时夹具目视。
 - LOD 阈值按标准单元行高屏幕像素（15px）；密度场固定 128×128。
 - 大样本 357217 路径待检查者提供后补 bench150 同命令对比。
@@ -141,5 +142,5 @@ f5c/f17/f8b/f9/f7/f2/f3/f4/f6/f8 等均 rc=1 优雅拒绝，f20/f14 维度一致
   （缺 metadata）才允许 Approx。
 - **清 kTok**：删除 frame_map.cpp 未使用静态常量，消除 unused-variable 警告。
 - R4 未重跑 bench；R3 性能历史风险保留，R4 二进制不冒充新实测。
-自测：`viz_tests` 460 项检查 0 失败，ctest 1/1；独立 review 138 项 0 失败
-（默认与 STRICT=1）。
+自测：`viz_tests`（纯 viz_core）460 项检查 0 失败，ctest 1/1；`viz_live_tests`
+（集成链算法库，T11 四阶段）821 项检查 0 失败；独立 review 138 项 0 失败（默认与 STRICT=1）。

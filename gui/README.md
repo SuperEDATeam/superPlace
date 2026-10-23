@@ -26,13 +26,16 @@
 | T8 | 两帧 A/B 对比、位移着色、抽样位移向量（≤约 4000 支）、最大/平均位移 |
 | T13 | 零依赖无头单测（`viz_tests`，不引入 gtest），覆盖相机/类别优先级/bundle 解析/空间索引/密度/帧映射/比例尺 |
 
-**未做（本轮授权边界之外，非仅缺样本）**：T9 names.txt 名称生成（依赖算法/导出端产出
-names.txt）、T10 网表连接性与 net 高亮/着色（无 `nets.bin` 时显式禁用、不伪造）、
-T11 实时四阶段、T12 暂停/停止；实时模式仍只跑 mGP。
+**已完成（本轮）**：T1–T8、T13，以及 **T11 实时四阶段**（实时模式现已跑完整
+mGP → mLG → FILLERONLY → cGP，见下）。
 
-任务分级（A/B/C）与每个任务的验收标准见文档 **§9**；本轮只做 A 类。
-**【C】类（T11 实时四阶段、T12 暂停/停止）不要直接动手**——
-尤其 T12：`EPlace::run()` 目前没有任何中断机制，必须算法侧先加 abort 路径。
+**未做（仍属授权边界之外）**：T9 names.txt 名称生成（依赖算法/导出端产出 names.txt）、
+T10 网表连接性与 net 高亮/着色（无 `nets.bin` 时显式禁用、不伪造）、
+T12 暂停/单步/停止。
+
+任务分级（A/B/C）与验收标准见文档 **§9**。
+T11 已在实时源 `live_source.cpp` 内照搬算法侧权威四阶段序列完成（UI 一行未改）；
+**T12 仍未做**：`EPlace::run()` 目前没有任何中断机制，必须算法侧先加 abort 路径。
 
 ## 装依赖（一次性）
 
@@ -138,7 +141,10 @@ cd gui && ./build-int/superplace-gui ../test_data/adaptec1/adaptec1.aux --stride
 
 UI 代码与独立版**完全相同**，差别只是注入了 `LiveSource` 而不是 `BundleSource`。
 
-> ⚠️ 当前**只跑 mGP 一个阶段**，没有 mLG / FILLERONLY / cGP，也没有暂停与单步。
+实时模式现已跑**完整四阶段**（与算法侧 `gp_stage.cpp` 同序）：
+`mGP` → `mLG`（宏合法化，一次性跳变单独成帧）→ `FILLERONLY` → `cGP`；
+时间轴按 `stage` 字段区分阶段。`newblue1`（原版 64 个可移动宏）上四阶段依次执行，
+最终 HPWL 与同配置 CLI 对拍一致（相对误差约 7e-11）。**暂停/单步/停止仍未做（T12）**。
 
 ## 目录
 
@@ -146,7 +152,7 @@ UI 代码与独立版**完全相同**，差别只是注入了 `LiveSource` 而�
 | --- | --- |
 | `src/viz/source.h` | `IPlacementSource` —— 前端与数据来源之间**唯一的接缝**；新能力带默认实现，兼容原有 LiveSource |
 | `src/viz/bundle_source.cpp` | 离线数据源：读 viz bundle（含 summary.json） |
-| `src/viz/live_source.cpp` | 实时数据源：**唯一 include 算法侧头文件的文件，本轮未改** |
+| `src/viz/live_source.cpp` | 实时数据源：唯一 include 算法侧头文件的文件；T11 在此接好四阶段序列 |
 | `src/viz/summary.{h,cpp}` | T1：summary.json 健壮解析、友好键名、告警判定 |
 | `src/viz/spatial_index.{h,cpp}` | T4：chip 均匀网格 CSR 空间索引，真实矩形命中、面积最小优先、懒重建 |
 | `src/viz/density.{h,cpp}` | T6：节点与 bin 真实面积重叠累加（可视化密度，非优化器平滑） |
@@ -155,7 +161,7 @@ UI 代码与独立版**完全相同**，差别只是注入了 `LiveSource` 而�
 | `src/render/scale_tick.h` | T3：1/2/5×10ⁿ niceStep 纯逻辑 |
 | `src/render/gl_loader.{h,cpp}` | 极简 GL 函数加载器 |
 | `src/app.{h,cpp}` | 主循环、停靠布局、全部面板接线 |
-| `test/` | T13 零依赖单测（相机/类别/bundle/索引/密度/帧映射/比例尺） |
+| `test/` | T13 零依赖单测 `viz_tests`（相机/类别/bundle/索引/密度/帧映射/比例尺）；集成模式另有无头 `viz_live_tests`（T11 四阶段序列） |
 | `sample-data/` | 合成样本，覆盖全部节点形态，可用 `make_viz.py --synthetic` 重新生成 |
 | `third_party/` | vendor 的 ImGui（docking 分支）与 ImPlot |
 
@@ -179,7 +185,7 @@ UI 代码与独立版**完全相同**，差别只是注入了 `LiveSource` 而�
   节点数上限，非内存 MiB）封顶后才分配，杜绝超大声明先分配再 bad_alloc；关闭的图层
   取消选中且不参与点选。
 - **名称待 T9**：bundle 无 `names.txt` 时检视面板显示"待 T9"，不编造名字。
-- **实时模式仍只跑 mGP**（T11/T12 未做，需算法侧配合）。
+- **暂停/单步/停止仍未做（T12）**：`EPlace::run()` 无中断路径，需算法侧先加。实时四阶段（T11）已完成。
 - LOD 阈值按标准单元行高的屏幕像素判定；密度场 128×128，固定分辨率，非多 mip。
 - 合成样本无 `summary.json`，T1 总览需带该文件的 bundle 才能目视（逻辑已单测覆盖）。
 

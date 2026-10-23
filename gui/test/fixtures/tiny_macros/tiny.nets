@@ -1,0 +1,48 @@
+UCLA nets 1.0
+
+NumNets : 10
+NumPins : 24
+
+NetDegree : 2 n0
+	c0 I : 0 0
+	m0 O : 0 0
+
+NetDegree : 2 n1
+	c5 I : 0 0
+	m1 O : 0 0
+
+NetDegree : 2 n2
+	c10 I : 0 0
+	m2 O : 0 0
+
+NetDegree : 2 n3
+	c15 I : 0 0
+	m3 O : 0 0
+
+NetDegree : 2 n4
+	t0 I : 0 0
+	c0 O : 0 0
+
+NetDegree : 2 n5
+	t1 I : 0 0
+	c19 O : 0 0
+
+NetDegree : 3 n6
+	c0 I : 0 0
+	c1 O : 0 0
+	c2 O : 0 0
+
+NetDegree : 3 n7
+	c3 I : 0 0
+	c4 O : 0 0
+	c5 O : 0 0
+
+NetDegree : 3 n8
+	c10 I : 0 0
+	c11 O : 0 0
+	c12 O : 0 0
+
+NetDegree : 3 n9
+	c15 I : 0 0
+	c16 O : 0 0
+	c17 O : 0 0

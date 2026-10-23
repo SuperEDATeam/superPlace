@@ -1,8 +1,9 @@
 # superplace-viz 开发交付报告
 
 面向：组长。范围：`gui/` 下原生 C++17（Dear ImGui docking + GLFW + OpenGL3.3 + ImPlot）
-布局可视化查看器，仅本目录改动，未触碰算法侧 `src/`、`test/`、根 `CMakeLists.txt`、
-`configs/`、`scripts/make_viz.py`、`work_report/` 与既有实时源 `gui/src/viz/live_source.cpp`。
+布局可视化查看器。本轮（T11）在授权范围内改动 `gui/src/viz/live_source.cpp` 与
+`gui/CMakeLists.txt`、新增 `gui/test/test_live_stages.cpp` 与迷你夹具；未触碰算法侧
+`src/`、`test/`、根 `CMakeLists.txt`、`configs/`、`scripts/make_viz.py`、`work_report/`。
 
 ## 一、已完成（A 类）
 
@@ -17,6 +18,7 @@
 | T7 属性着色 | 类别/局部密度/位移即时切换与图例；按 net 数因无网表显式禁用、不伪造 |
 | T8 两帧对比 | dx/dy 对拍、颜色=位移大小、矢量从 A 指向 B 带箭头头、双帧缓存；最大/平均位移真实 |
 | T13 单测 | 零依赖无头测试，不引入 gtest |
+| T11 实时四阶段 | `live_source.cpp` 内照搬算法侧权威序列：`mGP`→`mLG`(一次跳变单帧)→`scatterFillers`→`FILLERONLY`→`cGP`；每阶段新建 EPlace；UI/接缝零改动 |
 
 横切：中心坐标/Y 向上/chip fit/分类优先级 Filler>Fixed>Macro>Cell/零面积规则保持；
 新增 `IPlacementSource` 方法带默认实现，既有 LiveSource 不变成抽象类。
@@ -25,12 +27,12 @@
 
 - **T9 names.txt 名称生成**：依赖算法/导出端产出 names.txt，未实施；检视面板在无名称时显示占位、不编造。
 - **T10 网表连接性与 net 高亮/着色**：无 nets.bin，相关着色项在界面显式禁用。
-- **T11 实时四阶段**：未做，实时模式仍只跑 mGP。
-- **T12 暂停/停止**：`EPlace::run()` 无中断机制，需算法侧先加 abort 路径，未做。
+- **T12 暂停/单步/停止**：`EPlace::run()` 无中断机制，需算法侧先加 abort 路径，未做。
 
 ## 三、测试结果
 
-- 产品无头单测 `viz_tests`：**460 项检查 0 失败**；`ctest` 1/1。
+- 产品无头单测 `viz_tests`（纯 viz_core，不链算法库）：**460 项检查 0 失败**；`ctest` 1/1。
+- 集成无头测试 `viz_live_tests`（链 libsuperplace，T11 四阶段序列）：**821 项检查 0 失败**。
 - 独立 review 断言（检查者另建，单独编译）：**138 项 0 失败**（含非法 iter 严格批）。
 - 26 个畸形/边界夹具（坏 JSON、类型错、超大声明、ragged metrics、空阶段等）全部优雅
   拒绝或降级，无段错误/中止/坏分配；超大 nodeCount 分配前做文件大小一致性校验并按
@@ -46,7 +48,10 @@ p95 尾延迟两轮持续偏高约 13~18%，合成样本中位同向偏高。软
 
 - T2 窗口拖拽像素级 resize、关层后选中清除的真实桌面手工复验受环境限制，仅静态/
   单测覆盖，未做完整手工验收。
-- 无真实 newblue1/MMS/实时样本，未跑算法侧 ctest；本轮未为此扩大环境安装依赖。
+- T11 已在真实原版 `newblue1`（64 个可移动宏）上端到端跑通四阶段并与同配 CLI 对拍：
+  最终 HPWL live 75167609.794921875 vs CLI 75167609.79，相对误差约 7e-11（≤1e-6）；
+  阶段帧 mGP/mLG/FILLERONLY/cGP 顺序正确，mLG 一次跳变单帧，64 宏 mLG 后移动数为 0。
+- MMS（多宏）样本仍缺，仅影响 T8 两帧对比的额外样本覆盖；newblue1 已为混合尺寸验收数据。
 - 可用性残留：首末帧对比时位移向量密集会遮挡局部布局，可关闭向量显示或改选相邻帧。
 
 ## 六、构建、运行与测试（仓库根执行）

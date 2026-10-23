@@ -48,6 +48,10 @@ int main(int argc, char** argv) {
             opt.startFrame = std::atoi(argv[++i]);
             continue;
         }
+        if (a == "--compare") {
+            opt.compareOn = true;   // 自检：启动即开启两帧对比（T8 截图验证）
+            continue;
+        }
         opt.initialBundle = a;
     }
 

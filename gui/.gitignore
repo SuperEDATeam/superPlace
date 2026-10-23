@@ -11,3 +11,12 @@ data/
 
 # 注意：third_party/（vendor 的 ImGui 与 ImPlot）**要**进仓库——
 # 本机到 GitHub 的 git clone 不通，vendor 是唯一能让队友 clone 即构建的办法。
+
+# 本地产物与验收证据包（保留在磁盘，不进仓库）：
+# 交付快照/zip、验收截图/日志/夹具、独立 review 本地编译缓存。
+交付/
+验收/
+# 独立检查者私有断言副本（单独编译，不接入产品构建，保留在磁盘）
+test/review/
+.idea/
+.vscode/

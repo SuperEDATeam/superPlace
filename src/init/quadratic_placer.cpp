@@ -52,6 +52,19 @@ void assemble(const PlaceDB& db, const Config& cfg, const std::vector<int>& boun
     {
         std::vector<Triplet>& myTri = triplets;
         float* myRhs = rhs.data();
+
+        // 先给每个可移动节点放一个零值对角三元组，让对角槽位在 setFromTriplets
+        // 建表时就存在。
+        //
+        // 原因在下面的补丁循环：它要给零对角补 1e-6，而对【已压缩】的稀疏矩阵用
+        // coeffRef 插入新元素，要把其后全部元素整体后移，是 O(nnz) 一次。零对角很少，
+        // 但 nnz 很大——ISPD2006 newblue6 只有 151 个零对角，矩阵 nnz 1198 万，这段循环
+        // 却花了 5.2 s，占整个组装的 87%，QP 总耗时的七成多都耗在这里。
+        // 槽位预先存在后，coeffRef 只是原地改值。
+        //
+        // 对角项都是正权重之和，0 + w 精确等于 w，所以矩阵逐位不变。
+        for (int i = 0; i < nMov; ++i) myTri.emplace_back(i, i, 0.f);
+
         for (int k = 0; k < db.numNets; ++k) {
             const int deg = db.netDegree(k);
             if (deg < 2 || deg > cfg.ignore_net_degree) continue;   // 超大 net 跳过，避免 O(deg²) 退化
@@ -157,8 +170,9 @@ void QuadraticPlacer::place(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         solY[i] = db.node_y[i];
     }
 
-    // 预估非零元：每个 net 贡献 2·deg-3 个 pin 对，每对最多 4 个三元组
-    size_t nnz = 0;
+    // 预估非零元：每个 net 贡献 2·deg-3 个 pin 对，每对最多 4 个三元组；
+    // 另加每个可移动节点一个预留对角槽位（见 assemble）
+    size_t nnz = static_cast<size_t>(nMov);
     for (int k = 0; k < db.numNets; ++k) {
         const int deg = db.netDegree(k);
         if (deg < 2 || deg > cfg.ignore_net_degree) continue;

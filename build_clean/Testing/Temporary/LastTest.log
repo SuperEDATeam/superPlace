@@ -1,10 +1,10 @@
-Start testing: Oct 19 15:18 CST
+Start testing: Oct 26 17:59 CST
 ----------------------------------------------------------
 1/12 Testing: test_parser
 1/12 Test: test_parser
 Command: "/home/friedrichc/Placement/build_clean/test/test_parser"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_parser" start time: Oct 19 15:18 CST
+"test_parser" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] aux: /home/friedrichc/Placement/test_data/adaptec1/adaptec1.aux
@@ -34,10 +34,10 @@ Row height / count: 12 / 890  (site step 1.000000)
 
 [PASS] test_parser (36 checks)
 <end of output>
-Test time =   0.24 sec
+Test time =   0.21 sec
 ----------------------------------------------------------
 Test Passed.
-"test_parser" end time: Oct 19 15:18 CST
+"test_parser" end time: Oct 26 17:59 CST
 "test_parser" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -45,7 +45,7 @@ Test Passed.
 2/12 Test: test_csr
 Command: "/home/friedrichc/Placement/build_clean/test/test_csr"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_csr" start time: Oct 19 15:18 CST
+"test_csr" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] aux: /home/friedrichc/Placement/test_data/thin1/thin1.aux
@@ -58,7 +58,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_csr" end time: Oct 19 15:18 CST
+"test_csr" end time: Oct 26 17:59 CST
 "test_csr" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -66,7 +66,7 @@ Test Passed.
 3/12 Test: test_roundtrip
 Command: "/home/friedrichc/Placement/build_clean/test/test_roundtrip"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_roundtrip" start time: Oct 19 15:18 CST
+"test_roundtrip" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] aux: /home/friedrichc/Placement/test_data/adaptec1/adaptec1.aux
@@ -76,10 +76,10 @@ Output:
 [INFO ] .wts applied 0 net weights (rest default 1.0)
 [PASS] test_roundtrip (4 checks)
 <end of output>
-Test time =   0.32 sec
+Test time =   0.29 sec
 ----------------------------------------------------------
 Test Passed.
-"test_roundtrip" end time: Oct 19 15:18 CST
+"test_roundtrip" end time: Oct 26 17:59 CST
 "test_roundtrip" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -87,7 +87,7 @@ Test Passed.
 4/12 Test: test_poisson
 Command: "/home/friedrichc/Placement/build_clean/test/test_poisson"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_poisson" start time: Oct 19 15:18 CST
+"test_poisson" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 backend: cpu-fftw
@@ -98,10 +98,10 @@ backend: cpu-fftw
   [5] |xi_y + dphi/dy| / scale = 3.611e-03
 [PASS] test_poisson (13 checks)
 <end of output>
-Test time =   0.06 sec
+Test time =   0.08 sec
 ----------------------------------------------------------
 Test Passed.
-"test_poisson" end time: Oct 19 15:18 CST
+"test_poisson" end time: Oct 26 17:59 CST
 "test_poisson" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -109,7 +109,7 @@ Test Passed.
 5/12 Test: test_hpwl
 Command: "/home/friedrichc/Placement/build_clean/test/test_hpwl"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_hpwl" start time: Oct 19 15:18 CST
+"test_hpwl" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [PASS] test_hpwl (23 checks)
@@ -117,7 +117,7 @@ Output:
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"test_hpwl" end time: Oct 19 15:18 CST
+"test_hpwl" end time: Oct 26 17:59 CST
 "test_hpwl" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -125,7 +125,7 @@ Test Passed.
 6/12 Test: test_b2b
 Command: "/home/friedrichc/Placement/build_clean/test/test_b2b"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_b2b" start time: Oct 19 15:18 CST
+"test_b2b" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
   P=2            P= 2  pairs x/y =  1/ 1 (want  1)  sum x/y = 40.000001/87.000000  want 40.000000/87.000000
@@ -135,10 +135,10 @@ Output:
   buggy variant: pairs=4 (correct 7), sum=24.750000 (correct 39.000000)
 [PASS] test_b2b (178 checks)
 <end of output>
-Test time =   0.01 sec
+Test time =   0.15 sec
 ----------------------------------------------------------
 Test Passed.
-"test_b2b" end time: Oct 19 15:18 CST
+"test_b2b" end time: Oct 26 17:59 CST
 "test_b2b" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -146,7 +146,7 @@ Test Passed.
 7/12 Test: test_nesterov
 Command: "/home/friedrichc/Placement/build_clean/test/test_nesterov"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_nesterov" start time: Oct 19 15:18 CST
+"test_nesterov" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
   [isotropic]  max|x - x*| = 0.000e+00   obj = 0.000e+00
@@ -155,18 +155,18 @@ Output:
   [monotone]   100 轮中目标值上升 0 次（Nesterov 允许少量非单调）
 [PASS] test_nesterov (7 checks)
 <end of output>
-Test time =   0.04 sec
+Test time =   5.23 sec
 ----------------------------------------------------------
 Test Passed.
-"test_nesterov" end time: Oct 19 15:18 CST
-"test_nesterov" time elapsed: 00:00:00
+"test_nesterov" end time: Oct 26 17:59 CST
+"test_nesterov" time elapsed: 00:00:05
 ----------------------------------------------------------
 
 8/12 Testing: test_wirelength
 8/12 Test: test_wirelength
 Command: "/home/friedrichc/Placement/build_clean/test/test_wirelength"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_wirelength" start time: Oct 19 15:18 CST
+"test_wirelength" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
   3-pin net              gamma=  50.00  max|grad|=  1.1068  max rel err = 2.305e-05  (6 点)
@@ -181,10 +181,10 @@ Output:
   gamma 调度: tau=1.5 -> 1600.00   tau=0.5 -> 123.88   tau=0.05 -> 16.00
 [PASS] test_wirelength (13 checks)
 <end of output>
-Test time =   0.01 sec
+Test time =   0.49 sec
 ----------------------------------------------------------
 Test Passed.
-"test_wirelength" end time: Oct 19 15:18 CST
+"test_wirelength" end time: Oct 26 17:59 CST
 "test_wirelength" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -192,7 +192,7 @@ Test Passed.
 9/12 Test: test_density
 Command: "/home/friedrichc/Placement/build_clean/test/test_density"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_density" start time: Oct 19 15:18 CST
+"test_density" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] bin grid: 8x8  step (8.0000, 8.0000)  backend cpu-fftw
@@ -217,10 +217,10 @@ Output:
   [bindim]   自动推算得 32
 [PASS] test_density (14 checks)
 <end of output>
-Test time =   0.11 sec
+Test time =   0.08 sec
 ----------------------------------------------------------
 Test Passed.
-"test_density" end time: Oct 19 15:18 CST
+"test_density" end time: Oct 26 17:59 CST
 "test_density" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -228,7 +228,7 @@ Test Passed.
 10/12 Test: test_filler
 Command: "/home/friedrichc/Placement/build_clean/test/test_filler"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_filler" start time: Oct 19 15:18 CST
+"test_filler" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] filler: 60 cells of 10.00x10.00 (whitespace 10000, nodeScaled 2000, fillerArea 6000)
@@ -252,7 +252,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"test_filler" end time: Oct 19 15:18 CST
+"test_filler" end time: Oct 26 17:59 CST
 "test_filler" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -260,50 +260,64 @@ Test Passed.
 11/12 Test: test_macro_sa
 Command: "/home/friedrichc/Placement/build_clean/test/test_macro_sa"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_macro_sa" start time: Oct 19 15:18 CST
+"test_macro_sa" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] mLG: 空间索引自检通过（6x6 网格，最大偏差 0）
 [INFO ] mLG: 宏平均位移 5.0（= 0.06 个宏宽，典型宏宽 90，δ=1.00）
-[INFO ] mLG: 16 个宏，30000 次移动接受 8934（29.8%），贪心修复 15 次
-[INFO ] mLG: 重叠 972000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4230 (+423000.00%)，16.9 ms
+[INFO ] mLG: 16 个宏，30000 次移动接受 15399（51.3%），贪心修复 15 次
+[INFO ] mLG 初温: 典型恶化 dCost=165 → t0=1.57e+03（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 972000，SA 用 19 ms 降到 972000，修复用 1 ms 降到 0
+[INFO ] mLG: 重叠 972000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4230 (+423000.00%)，19.9 ms
   [overlap]  16 个宏，重叠 972000 -> 0（独立对照）
 [INFO ] mLG: 空间索引自检通过（5x5 网格，最大偏差 0）
-[INFO ] mLG: 宏平均位移 155.4（= 1.30 个宏宽，典型宏宽 120，δ=1.00）
-[INFO ] mLG: 12 个宏，30000 次移动接受 7945（26.5%），贪心修复 8 次
-[INFO ] mLG: 重叠 647400 -> 0（占宏总面积 0.0000%），HPWL 110 -> 2498 (+2170.91%)，13.1 ms
+[INFO ] mLG: 宏平均位移 497.0（= 4.14 个宏宽，典型宏宽 120，δ=1.00）
+[INFO ] mLG: 12 个宏，30000 次移动接受 9007（30.0%），贪心修复 6 次
+[INFO ] mLG 初温: 典型恶化 dCost=0.364 → t0=3.45（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 647400，SA 用 16 ms 降到 71760，修复用 0 ms 降到 0
+[INFO ] mLG: 重叠 647400 -> 0（占宏总面积 0.0000%），HPWL 110 -> 4772 (+4238.18%)，15.7 ms
   [legal]    越界 0 个，未对齐到行 0 个
 [INFO ] mLG: 空间索引自检通过（4x4 网格，最大偏差 0）
-[INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
-[INFO ] mLG: 8 个宏，30000 次移动接受 8914（29.7%），贪心修复 7 次
-[INFO ] mLG: 重叠 280000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 800 (+80000.00%)，8.8 ms
+[INFO ] mLG: 宏平均位移 390.5（= 3.90 个宏宽，典型宏宽 100，δ=1.00）
+[INFO ] mLG: 8 个宏，30000 次移动接受 14208（47.4%），贪心修复 4 次
+[INFO ] mLG 初温: 典型恶化 dCost=97.2 → t0=922（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 280000，SA 用 8 ms 降到 40000，修复用 0 ms 降到 0
+[INFO ] mLG: 重叠 280000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 1345 (+134500.00%)，7.9 ms
   [fixed]    固定节点 0 -> 8，宏标志仍保留 8 个
 [INFO ] mLG: 无可移动宏，跳过（ISPD2005/2006 原版数据上这是正常情况）
 [INFO ] mLG: 空间索引自检通过（4x4 网格，最大偏差 0）
 [INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
-[INFO ] mLG: 9 个宏，30000 次移动接受 13884（46.3%），贪心修复 0 次
-[INFO ] mLG: 重叠 0 -> 0（占宏总面积 0.0000%），HPWL 3600 -> 3600 (+0.00%)，8.3 ms
+[INFO ] mLG: 9 个宏，20002 次移动接受 12333（61.7%），贪心修复 0 次
+[INFO ] mLG 初温: 典型恶化 dCost=0.104 → t0=0.989（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 0，SA 用 5 ms 降到 0，修复用 0 ms 降到 0
+[INFO ] mLG: 重叠 0 -> 0（占宏总面积 0.0000%），HPWL 3600 -> 3600 (+0.00%)，5.4 ms
   [wl]       无重叠初值下 HPWL 3600.0 -> 3600.0（比值 1.0000）
 [INFO ] mLG: 空间索引自检通过（4x4 网格，最大偏差 0）
-[INFO ] mLG: 宏平均位移 84.3（= 1.05 个宏宽，典型宏宽 80，δ=1.00）
-[INFO ] mLG: 10 个宏，30000 次移动接受 15921（53.1%），贪心修复 1 次
-[INFO ] mLG: 重叠 182400 -> 0（占宏总面积 0.0000%），HPWL 7528 -> 7301 (-3.02%)，9.6 ms
-  [incr]     增量模型报 7301.0000，全量重算 7301.0000，相对差 0.00e+00
+[INFO ] mLG: 宏平均位移 77.4（= 0.97 个宏宽，典型宏宽 80，δ=1.00）
+[INFO ] mLG: 10 个宏，30000 次移动接受 19705（65.7%），贪心修复 0 次
+[INFO ] mLG 初温: 典型恶化 dCost=0.495 → t0=4.7（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 182400，SA 用 9 ms 降到 0，修复用 0 ms 降到 0
+[INFO ] mLG: 重叠 182400 -> 0（占宏总面积 0.0000%），HPWL 7528 -> 7227 (-4.00%)，9.0 ms
+  [incr]     增量模型报 7227.0000，全量重算 7227.0000，相对差 0.00e+00
 [INFO ] mLG: 空间索引自检通过（5x5 网格，最大偏差 0）
 [INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
-[INFO ] mLG: 14 个宏，30000 次移动接受 8935（29.8%），贪心修复 13 次
-[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，12.6 ms
+[INFO ] mLG: 14 个宏，30000 次移动接受 15203（50.7%），贪心修复 13 次
+[INFO ] mLG 初温: 典型恶化 dCost=181 → t0=1.72e+03（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 910000，SA 用 14 ms 降到 910000，修复用 0 ms 降到 0
+[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，14.7 ms
 [INFO ] mLG: 空间索引自检通过（5x5 网格，最大偏差 0）
 [INFO ] mLG: 宏平均位移 0.0（= 0.00 个宏宽，典型宏宽 100，δ=1.00）
-[INFO ] mLG: 14 个宏，30000 次移动接受 8935（29.8%），贪心修复 13 次
-[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，12.5 ms
+[INFO ] mLG: 14 个宏，30000 次移动接受 15203（50.7%），贪心修复 13 次
+[INFO ] mLG 初温: 典型恶化 dCost=181 → t0=1.72e+03（旧标定会给 9.49）
+[INFO ] mLG 分账: 重叠 910000，SA 用 14 ms 降到 910000，修复用 0 ms 降到 0
+[INFO ] mLG: 重叠 910000 -> 0（占宏总面积 0.0000%），HPWL 0 -> 4100 (+410000.00%)，14.4 ms
   [determ]   同种子两次运行，28 个坐标中不一致 0 个
 [PASS] test_macro_sa (17 checks)
 <end of output>
-Test time =   0.08 sec
+Test time =   0.09 sec
 ----------------------------------------------------------
 Test Passed.
-"test_macro_sa" end time: Oct 19 15:18 CST
+"test_macro_sa" end time: Oct 26 17:59 CST
 "test_macro_sa" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -311,7 +325,7 @@ Test Passed.
 12/12 Test: test_eplace
 Command: "/home/friedrichc/Placement/build_clean/test/test_eplace"
 Directory: /home/friedrichc/Placement/build_clean/test
-"test_eplace" start time: Oct 19 15:18 CST
+"test_eplace" start time: Oct 26 17:59 CST
 Output:
 ----------------------------------------------------------
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
@@ -329,7 +343,7 @@ Output:
 [INFO ]   [mGP  160] HPWL=4.4179e+05  τ=0.1510  λ=0.0004672  γ=19.48  α=2.062
 [INFO ] mGP 结束：180 轮，HPWL=460032，τ=0.0965（达标）
   [sign]     τ 0.9528 -> 0.0965（180 轮，达标）
-             ^ 符号(铺开) 耗时 132 ms
+             ^ 符号(铺开) 耗时 126 ms
 [INFO ] filler: 11950 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 278400, fillerArea 1147200)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13958 个节点参与优化 (bin 64x64, τ0=0.9321, λ0=2.295e-07, γ0=1060)
@@ -344,7 +358,7 @@ Output:
 [INFO ]   [mGP  160] HPWL=2.8575e+05  τ=0.1363  λ=0.0005638  γ=18.06  α=3.373
 [INFO ] mGP 结束：175 轮，HPWL=293533，τ=0.0993（达标）
   [sane]     非有限坐标 0 个，越界 0 个，HPWL=293533
-             ^ 数值健全 耗时 110 ms
+             ^ 数值健全 耗时 107 ms
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 200 个节点参与优化 (bin 64x64, τ0=0.0000, λ0=0.0008784, γ0=15)
@@ -372,7 +386,7 @@ Output:
 [INFO ]   [mGP  300] HPWL=9.6315e+05  τ=0.2964  λ=0.1382  γ=81.96  α=1.319
 [WARN ] mGP: τ 连续 40 轮无改善（停在 0.2976，最好 0.2954 @ 第 268 轮），判定停滞并回退到最优解
 [WARN ] mGP: 此刻 HPWL=1.021e+06，而最优解处 HPWL=671181 —— 继续跑只会让线长单调膨胀而 τ 毫无改善
-[INFO ] mGP 结束：309 轮，HPWL=670765，τ=0.2956（τ 停滞，已回退到最优解）
+[INFO ] mGP 结束：309 轮，HPWL=671181，τ=0.2954（τ 停滞，已回退到最优解）
 [WARN ] filler: whitespace*1.00 (1425600) <= node area (2018560), no filler inserted
 [INFO ] bin grid: 32x32  step (37.5000, 37.5000)  backend cpu-fftw
 [INFO ] mGP: 3040 个节点参与优化 (bin 32x32, τ0=0.9579, λ0=6.08e-08, γ0=2418)
@@ -403,9 +417,9 @@ Output:
 [INFO ]   [mGP  480] HPWL=1.9408e+06  τ=0.2946  λ=901  γ=81.22  α=0.9438
 [INFO ] mGP 结束：500 轮，HPWL=1.98027e+06，τ=0.2950（耗尽迭代上限）
   [stagnate] τ 的理论下界 ≈ 0.286（面积守恒），目标 0.10 不可达
-  [stagnate] 开保护：309 轮 τ=0.2956 HPWL=670765
-  [stagnate] 关保护：500 轮 τ=0.2950 HPWL=1.98027e+06（多跑 191 轮，线长多涨 195.2%）
-             ^ 停滞保护 耗时 327 ms
+  [stagnate] 开保护：309 轮 τ=0.2954 HPWL=671181
+  [stagnate] 关保护：500 轮 τ=0.2950 HPWL=1.98027e+06（多跑 191 轮，线长多涨 195.0%）
+             ^ 停滞保护 耗时 307 ms
 [INFO ] filler: 11950 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 278400, fillerArea 1147200)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13958 个节点参与优化 (bin 64x64, τ0=0.9321, λ0=2.295e-07, γ0=1060)
@@ -433,7 +447,7 @@ Output:
 [INFO ]   [mGP  160] HPWL=2.8575e+05  τ=0.1363  λ=0.0005638  γ=18.06  α=3.373
 [INFO ] mGP 结束：175 轮，HPWL=293533，τ=0.0993（达标）
   [determ]   27924 个坐标中不一致 0 个
-             ^ 确定性 耗时 214 ms
+             ^ 确定性 耗时 210 ms
 [INFO ] filler: 11725 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 300000, fillerArea 1125600)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13735 个节点参与优化 (bin 64x64, τ0=0.9342, λ0=2.219e-07, γ0=1071)
@@ -456,7 +470,7 @@ Output:
 [INFO ]   [cGP   80] HPWL=2.9492e+05  τ=0.0754  λ=0.003117  γ=15  α=3.554
 [INFO ] cGP 结束：84 轮，HPWL=295724，τ=0.0697（达标）
   [cgp]      10 个宏中 cGP 期间发生位移的 0 个
-             ^ cGP宏冻结 耗时 166 ms
+             ^ cGP宏冻结 耗时 154 ms
 [INFO ] filler: 10500 cells of 8.00x12.00 (whitespace 1425600, nodeScaled 417600, fillerArea 1008000)
 [INFO ] bin grid: 64x64  step (18.7500, 18.7500)  backend cpu-fftw
 [INFO ] mGP: 13512 个节点参与优化 (bin 64x64, τ0=0.9528, λ0=1.902e-07, γ0=1178)
@@ -471,14 +485,14 @@ Output:
 [INFO ]   [mGP  160] HPWL=4.4179e+05  τ=0.1510  λ=0.0004672  γ=19.48  α=2.062
 [INFO ] mGP 结束：180 轮，HPWL=460032，τ=0.0965（达标）
   [band]     180 轮收敛；HPWL 132800 -> 460032（涨 3.46x）τ=0.0965
-             ^ 质量带 耗时 125 ms
+             ^ 质量带 耗时 116 ms
 [PASS] test_eplace (24 checks)
 <end of output>
-Test time =   1.08 sec
+Test time =   1.02 sec
 ----------------------------------------------------------
 Test Passed.
-"test_eplace" end time: Oct 19 15:18 CST
+"test_eplace" end time: Oct 26 17:59 CST
 "test_eplace" time elapsed: 00:00:01
 ----------------------------------------------------------
 
-End testing: Oct 19 15:18 CST
+End testing: Oct 26 17:59 CST

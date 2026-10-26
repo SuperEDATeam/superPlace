@@ -307,6 +307,55 @@ public:
         return sum;
     }
 
+    /// 宏 s 若位于 (px,py)，与之重叠面积最大的那个对象的矩形——**宏或固定阻挡都算**。
+    /// 无重叠返回 false。
+    ///
+    /// 必须把阻挡算进来。早期只找宏邻居，于是一个只压在固定阻挡上的宏会被判为
+    /// "没有邻居"而跳过，永远推不开：ISPD2005 bigblue3 上残留的 3456 重叠
+    /// **全部**是宏压在阻挡上（4 对），宏与宏之间是 0。
+    ///
+    /// 走与 at() 同一套网格索引；宏候选先于阻挡、各自按下标排序，严格大于才替换，
+    /// 因此平局时结果固定，保证可复现。
+    bool worstRect(int s, float px, float py, Rect& out) const {
+        const Rect a = rectOf(s, px, py);
+        int x0i, x1i, y0i, y1i;
+        cellRange(a, x0i, x1i, y0i, y1i);
+        double bestOv = 0.0;
+
+        cand_.clear();
+        ++tick_;
+        for (int gx = x0i; gx <= x1i; ++gx)
+            for (int gy = y0i; gy <= y1i; ++gy)
+                for (int t : cells_[cellIdx(gx, gy)]) {
+                    if (t == s || stamp_[static_cast<size_t>(t)] == tick_) continue;
+                    stamp_[static_cast<size_t>(t)] = tick_;
+                    cand_.push_back(t);
+                }
+        std::sort(cand_.begin(), cand_.end());
+        for (int t : cand_) {
+            const Rect b = rectOf(t, cx_[static_cast<size_t>(t)], cy_[static_cast<size_t>(t)]);
+            const double o = overlapArea(a, b);
+            if (o > bestOv) { bestOv = o; out = b; }
+        }
+
+        if (!blockages_.empty()) {
+            bcand_.clear();
+            for (int gx = x0i; gx <= x1i; ++gx)
+                for (int gy = y0i; gy <= y1i; ++gy)
+                    for (int b : blockCells_[cellIdx(gx, gy)]) {
+                        if (blockStamp_[static_cast<size_t>(b)] == tick_) continue;
+                        blockStamp_[static_cast<size_t>(b)] = tick_;
+                        bcand_.push_back(b);
+                    }
+            std::sort(bcand_.begin(), bcand_.end());
+            for (int b : bcand_) {
+                const double o = overlapArea(a, blockages_[static_cast<size_t>(b)]);
+                if (o > bestOv) { bestOv = o; out = blockages_[static_cast<size_t>(b)]; }
+            }
+        }
+        return bestOv > 0.0;
+    }
+
     /// 全局重叠总量。按下标序两两求和，与索引无关，可作为 at() 的独立对照。
     double total() const {
         double sum = 0.0;
@@ -514,14 +563,74 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     for (size_t s = 0; s < nM; ++s) disp += dispOf(static_cast<int>(s), cx[s], cy[s]);
     const double dispBefore = disp;
 
-    const int moves = (cfg.macro_sa_moves > 0)
-                          ? cfg.macro_sa_moves
-                          : std::max(20000, static_cast<int>(nM) * 3000);
+    // ---- 移动预算：按【正在重叠的宏】计，不按宏总数
+    //
+    // 早期写的是 3000 × 宏总数。可移动宏里大量其实早已合法、无事可做——
+    // ISPD2006 newblue2 有 3723 个"宏"（全是双高单元），按总数给了 1117 万次移动，
+    // SA 跑了 71 秒，而真正需要处理的只有一千多个。
+    std::vector<int> hot;   // 当前有重叠的宏，SA 定向移动的对象
+    auto rebuildHot = [&] {
+        hot.clear();
+        for (size_t s = 0; s < nM; ++s)
+            if (om.at(static_cast<int>(s), cx[s], cy[s]) > 0.0) hot.push_back(static_cast<int>(s));
+    };
+    rebuildHot();
+    const int nHot0 = static_cast<int>(hot.size());
+    const int moves = (cfg.macro_sa_moves > 0) ? cfg.macro_sa_moves
+                                               : std::max(20000, nHot0 * 300);
+    r.hotMacros = nHot0;
     Rng rng(cfg.random_seed ^ 0x9E3779B97F4A7C15ull);
 
-    // 初温按"接受一次典型恶化的概率约为 init_accept"来定，避免拍脑袋给常数
-    const double t0 = -1.0 / std::log(std::max(1e-6f, cfg.macro_sa_init_accept));
+    // ---- 初温标定：让"一次典型恶化"以 init_accept 的概率被接受
+    //
+    // 早期版本写的是 t0 = −1 / ln(init_accept)，等于默认"典型恶化"的代价变化是 1。
+    // 但代价三项都做了归一化，挪一个宏引起的变化只有 1e-3 量级——差三个数量级。
+    // 于是初温高到几乎什么都接受，SA 在高温段把 mGP 给的近乎合法的解随机打乱，
+    // 之后再也回不到比起点更好的状态，最优解回退又把它白干的活整个扔掉。
+    // 审计实测：newblue1/newblue2/bigblue3 与官方 MMS adaptec1/adaptec4 上，
+    // SA 结束时的重叠与开始时**完全相同**，全部重叠都是后面的贪心修复消掉的；
+    // newblue2 上 SA 就这样白跑了 71 秒。
+    //
+    // 正确做法是实测：从起点试探若干次平移（试完即撤回，不提交），取恶化移动
+    // dCost 的中位数。用中位数而非均值，是因为偶有一次挪到大块上会产生离群的巨大
+    // 重叠增量，均值会被它拉高。
+    const double acceptAtStart = std::clamp(static_cast<double>(cfg.macro_sa_init_accept),
+                                            1e-6, 1.0 - 1e-6);
+    double typicalWorsen = 0.0;
+    {
+        constexpr int kProbe = 2000;
+        std::vector<double> worse;
+        worse.reserve(kProbe);
+        std::vector<int>    pd;
+        std::vector<double> pv;
+        const double c0 = cost(overlap, wl, disp);
+        for (int k = 0; k < kProbe; ++k) {
+            const int s = rng.uniformInt(0, static_cast<int>(nM) - 1);
+            const float ox = cx[static_cast<size_t>(s)], oy = cy[static_cast<size_t>(s)];
+            const float span0 = static_cast<float>(refLen);
+            float nx = ox + rng.uniform(-span0, span0);
+            float ny = oy + rng.uniform(-span0, span0);
+            snap(om, s, nx, ny);
+            const double dOv = om.at(s, nx, ny) - om.at(s, ox, oy);
+            const double dD = dispOf(s, nx, ny) - dispOf(s, ox, oy);
+            om.setPos(s, nx, ny);
+            const double dW = iwl.deltaForMacro(s, cx, cy, flipped, pd, pv);
+            om.setPos(s, ox, oy);   // 撤回，不提交
+            const double dc = cost(overlap + dOv, wl + dW, disp + dD) - c0;
+            if (dc > 0.0) worse.push_back(dc);
+        }
+        if (!worse.empty()) {
+            std::nth_element(worse.begin(), worse.begin() + static_cast<long>(worse.size() / 2),
+                             worse.end());
+            typicalWorsen = worse[worse.size() / 2];
+        }
+    }
+    // 万一试探全是改进（起点很差）就退回旧标定，至少不会除零
+    const double t0 = (typicalWorsen > 0.0) ? -typicalWorsen / std::log(acceptAtStart)
+                                            : -1.0 / std::log(acceptAtStart);
     const double tempRatio = std::max(1e-12f, cfg.macro_sa_temp_ratio);
+    r.t0 = t0;
+    r.typicalWorsen = typicalWorsen;
 
     // SA 是随机过程，最后一个被接受的解不一定是见过的最好解——末期仍会接受恶化。
     // 必须单独记住最优解并在结束时回到它，否则无重叠的输入进来反而会被搞坏。
@@ -533,16 +642,30 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     std::vector<double> newVals;
     Timer timer;
 
+    constexpr int kHotRefresh = 500;      // 每隔多少次移动重建一次重叠宏列表
+    constexpr int kStallAfterLegal = 20000;  // 重叠清零后，最优解多久没改进就收工
+    int lastImprove = 0;
+    int done = 0;
+
     for (int it = 0; it < moves; ++it) {
+        done = it + 1;
         const double progress = static_cast<double>(it) / static_cast<double>(moves);
         const double temp = t0 * std::pow(tempRatio, progress);
-        // 移动幅度以【宏的典型尺寸】而非芯片尺寸为基准。
-        // 原先起步幅度是半个芯片，对一个已经接近合法的输入来说是在重新布图；
-        // 配合上面的位移项，这里只需要能跨过几个宏的距离做局部腾挪。
-        const float span = static_cast<float>(refLen * (6.0 * (1.0 - progress) + 0.5));
+        if (it % kHotRefresh == 0 && it > 0) rebuildHot();
+        // 已经合法、且很久没有找到更好的线长：剩下的预算只会在原地打转
+        if (overlap <= 0.0 && it - lastImprove > kStallAfterLegal) break;
 
-        const int s = rng.uniformInt(0, static_cast<int>(nM) - 1);
-        const int op = rng.uniformInt(0, 9);   // 0-6 平移，7-8 交换，9 翻转
+        // 随机平移的步长以宏的典型尺寸为基准，且要小——它只负责线长微调。
+        // 消除重叠交给下面的定向移动；实测把这里从 6.5 倍宏宽缩到 0.5 倍，
+        // newblue1 上 SA 才第一次真正消掉了重叠（147528 -> 83124）。
+        const float span = static_cast<float>(refLen * (0.5 * (1.0 - progress) + 0.02));
+
+        // 70% 的概率挑一个正在重叠的宏做定向移动；否则在全体宏里随机挑
+        const bool targeted = !hot.empty() && rng.uniform(0.f, 1.f) < 0.7f;
+        const int s = targeted ? hot[static_cast<size_t>(
+                                     rng.uniformInt(0, static_cast<int>(hot.size()) - 1))]
+                               : rng.uniformInt(0, static_cast<int>(nM) - 1);
+        const int op = targeted ? 0 : rng.uniformInt(0, 9);   // 0-6 平移，7-8 交换，9 翻转
 
         const float oldX = cx[static_cast<size_t>(s)], oldY = cy[static_cast<size_t>(s)];
         const uint8_t oldFlip = flipped[static_cast<size_t>(s)];
@@ -552,8 +675,32 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
         double dOverlap = 0.0, dDisp = 0.0;
 
         if (op <= 6) {
-            float nx = oldX + rng.uniform(-span, span);
-            float ny = oldY + rng.uniform(-span, span);
+            float nx = oldX, ny = oldY;
+            Rect b{};
+            if (targeted && om.worstRect(s, oldX, oldY, b)) {
+                // 定向移动：把 s 推离与它重叠最大的对象（宏或阻挡），位移量恰好是分开
+                // 所需的最小值。步长由重叠深度自动决定——浅重叠挪一点，深重叠挪很多。
+                // 任何统一的步长曲线都做不到这一点：缩小步长后 newblue1 好了，
+                // 官方 MMS adaptec1 仍不动。
+                const Rect a = om.rectOf(s, oldX, oldY);
+                const float cand[4][2] = {{b.lx - a.hx, 0.f}, {b.hx - a.lx, 0.f},
+                                          {0.f, b.ly - a.hy}, {0.f, b.hy - a.ly}};
+                int pick = 0;
+                if (rng.uniform(0.f, 1.f) < 0.7f) {   // 多数时候取最近的方向
+                    float best = std::numeric_limits<float>::infinity();
+                    for (int k = 0; k < 4; ++k) {
+                        const float m = std::fabs(cand[k][0]) + std::fabs(cand[k][1]);
+                        if (m < best) { best = m; pick = k; }
+                    }
+                } else {                               // 偶尔换个方向，给 SA 留出探索余地
+                    pick = rng.uniformInt(0, 3);
+                }
+                nx = oldX + cand[pick][0];
+                ny = oldY + cand[pick][1];
+            } else {
+                nx = oldX + rng.uniform(-span, span);
+                ny = oldY + rng.uniform(-span, span);
+            }
             snap(om, s, nx, ny);
             dOverlap = om.at(s, nx, ny) - om.at(s, oldX, oldY);
             dDisp = dispOf(s, nx, ny) - dispOf(s, oldX, oldY);
@@ -607,6 +754,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
                 bestX = cx;
                 bestY = cy;
                 bestFlip = flipped;
+                lastImprove = it;
             }
         } else {
             om.setPos(s, oldX, oldY);
@@ -614,7 +762,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             if (s2 >= 0) om.setPos(s2, oldX2, oldY2);
         }
     }
-    r.moves = moves;
+    r.moves = done;
 
     for (size_t s = 0; s < nM; ++s) om.setPos(static_cast<int>(s), bestX[s], bestY[s]);
     flipped = bestFlip;
@@ -622,6 +770,8 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     overlap = om.total();
     disp = 0.0;
     for (size_t s = 0; s < nM; ++s) disp += dispOf(static_cast<int>(s), cx[s], cy[s]);
+    r.overlapAfterSa = overlap;
+    r.saMs = timer.elapsedMs();
 
     // ---- 贪心修复：SA 是概率算法，不保证重叠恰好为 0，而"零重叠"是硬验收项。
     //
@@ -713,8 +863,11 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     //
     // 网格搜索是在固定步长的候选点里挑，一个只差几个单位就能分开的宏，
     // 可能在整张候选网格上都找不到零重叠点。这里改为**直接算出让它脱离
-    // 当前最大重叠邻居所需的最小平移**（左/右/下/上四选一），一次到位。
+    // 当前最大重叠对象所需的最小平移**（左/右/下/上四选一），一次到位。
     // 可能引入新的重叠，故迭代若干轮并只接受总量下降的结果。
+    //
+    // "最大重叠对象"含固定阻挡（见 OverlapModel::worstRect）。早期这里只遍历宏，
+    // 只压在阻挡上的宏会因"找不到邻居"被跳过——bigblue3 的残留重叠就全是这种。
     for (int pass = 0; pass < 30 && overlap > 0.0; ++pass) {
         bool moved = false;
         for (size_t s = 0; s < nM; ++s) {
@@ -722,17 +875,8 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             if (om.at(si, cx[s], cy[s]) <= 0.0) continue;
             const Rect a = om.rectOf(si, cx[s], cy[s]);
 
-            // 找重叠最大的那个邻居
-            int worst = -1;
-            double worstOv = 0.0;
-            for (size_t t = 0; t < nM; ++t) {
-                if (t == s) continue;
-                const double o = overlapArea(a, om.rectOf(static_cast<int>(t), cx[t], cy[t]));
-                if (o > worstOv) { worstOv = o; worst = static_cast<int>(t); }
-            }
-            if (worst < 0) continue;
-            const Rect b = om.rectOf(worst, cx[static_cast<size_t>(worst)],
-                                     cy[static_cast<size_t>(worst)]);
+            Rect b{};
+            if (!om.worstRect(si, cx[s], cy[s], b)) continue;
 
             const float dxL = b.lx - a.hx, dxR = b.hx - a.lx;   // 推到左侧 / 右侧
             const float dyD = b.ly - a.hy, dyU = b.hy - a.ly;   // 推到下方 / 上方
@@ -789,6 +933,13 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     SP_INFO("mLG: %d 个宏，%d 次移动接受 %d（%.1f%%），贪心修复 %d 次",
             r.numMacros, r.moves, r.accepted,
             100.0 * r.accepted / std::max(1, r.moves), r.repaired);
+    // 分账：重叠是 SA 消掉的还是修复消掉的、时间各花在哪。没有这一行就无从判断
+    // SA 的移动预算是否花得值。
+    SP_INFO("mLG 初温: 典型恶化 dCost=%.3g → t0=%.3g（旧标定会给 %.3g）", r.typicalWorsen, r.t0,
+            -1.0 / std::log(std::clamp(static_cast<double>(cfg.macro_sa_init_accept), 1e-6,
+                                       1.0 - 1e-6)));
+    SP_INFO("mLG 分账: 重叠 %.6g，SA 用 %.0f ms 降到 %.6g，修复用 %.0f ms 降到 %.6g",
+            r.overlapBefore, r.saMs, r.overlapAfterSa, ms - r.saMs, r.overlapAfter);
     SP_INFO("mLG: 重叠 %.6g -> %.6g（占宏总面积 %.4f%%），HPWL %.6g -> %.6g (%+.2f%%)，%.1f ms",
             r.overlapBefore, r.overlapAfter, 100.0 * r.overlapAfter / macroArea, r.hpwlBefore,
             r.hpwlAfter, 100.0 * (r.hpwlAfter - r.hpwlBefore) / std::max(1.0, r.hpwlBefore), ms);

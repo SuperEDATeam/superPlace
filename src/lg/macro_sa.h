@@ -22,7 +22,12 @@ struct MacroSaResult {
     int    accepted      = 0;   ///< 被接受的次数
     int    repaired      = 0;   ///< SA 后仍需贪心修复的宏个数
     double overlapBefore = 0.0;
+    double overlapAfterSa = 0.0;   ///< SA 结束、贪心修复之前
     double overlapAfter  = 0.0;
+    double saMs          = 0.0;   ///< 其中 SA 段的耗时（其余为修复）
+    int    hotMacros     = 0;     ///< 起点时有重叠的宏数（决定移动预算）
+    double t0            = 0.0;   ///< 标定得到的初温
+    double typicalWorsen = 0.0;   ///< 标定时恶化移动 dCost 的中位数
     double hpwlBefore    = 0.0;
     double hpwlAfter     = 0.0;
 };

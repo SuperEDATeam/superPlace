@@ -335,7 +335,13 @@ GpResult EPlace::run(GpStage stage) {
                 bestTau = s.tau;
                 bestHpwl = s.hpwl;
                 bestIter = iter;
-                bestPos = s.pos;
+                // 必须保存【测得这个 τ 的那个点】。τ 与 HPWL 都是在 objAndGrad 里对
+                // Nesterov 的前瞻点 u 算的，而 step() 返回后 s.pos 是当前解 v。
+                // 早期写的是 bestPos = s.pos，把 τ(u) 配给了 v 的坐标。收敛平稳时
+                // u≈v 看不出来，但停滞保护恰恰在轨迹震荡时才触发，此时两者相差很远：
+                // 官方 MMS adaptec5 上声称回退到"最优 τ=0.1180"，回退后实测却是 0.2587。
+                // objAndGrad 把 u 写进了 db，step() 不碰 db，所以此刻 db 仍停在 u。
+                s.gather(bestPos.data());
                 sinceImprove = 0;
             } else if (++sinceImprove >= cfg.gp_stagnation_window) {
                 stagnated = true;

@@ -107,6 +107,11 @@ add_executable(superplace-quiz tools/quiz/main.cpp)
 target_link_libraries(superplace-quiz PRIVATE superplace)
 target_compile_options(superplace-quiz PRIVATE -Wall -Wextra)
 
+# 诊断工具：以给定 .pl 为输入单独回放宏合法化（mLG），复现修复段的问题不必重跑 GP
+add_executable(superplace-mlg-replay tools/mlg_replay/main.cpp)
+target_link_libraries(superplace-mlg-replay PRIVATE superplace)
+target_compile_options(superplace-mlg-replay PRIVATE -Wall -Wextra)
+
 # ------------------------------------------------------------------------ tests
 enable_testing()
 add_subdirectory(test)

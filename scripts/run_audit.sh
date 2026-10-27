@@ -6,7 +6,7 @@ set -u
 cd "$(dirname "$0")/.."
 
 OUT=${1:-results/audit}
-CFG=configs/default.json
+CFG=${CFG:-configs/default.json}
 mkdir -p "$OUT"
 
 # 规模升序：对象数见 work_report/04 §6.3。可用环境变量 DESIGNS 覆盖，

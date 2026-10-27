@@ -21,6 +21,7 @@ struct MacroSaResult {
     int    moves         = 0;   ///< 尝试的移动次数
     int    accepted      = 0;   ///< 被接受的次数
     int    repaired      = 0;   ///< SA 后仍需贪心修复的宏个数
+    int    chained       = 0;   ///< 连锁推挤累计移动的宏次数
     double overlapBefore = 0.0;
     double overlapAfterSa = 0.0;   ///< SA 结束、贪心修复之前
     double overlapAfter  = 0.0;

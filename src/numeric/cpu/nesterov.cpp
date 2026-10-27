@@ -54,6 +54,8 @@ public:
 
         // ---- 1. 在前瞻点 u_k 处求梯度
         f_(u_.data(), g_.data(), &obj_);
+        ++evals_;
+        if (cfg_.backtrack && iter_ > 0) redoIfOvershot(n);
         gradNorm_ = static_cast<float>(l2Norm(g_.data(), n));
 
         // ---- 2. 步长：首步用预估值，之后用 Lipschitz 常数的倒数
@@ -82,7 +84,9 @@ public:
         gPrev_.swap(gPrevTmp_);
         gPrevTmp_ = g_;
         v_.swap(vNew_);
+        vPrev_.swap(vNew_);   // 回溯重走上一步要用 v_k；vNew_ 下一步会被整体覆写
         u_.swap(uNew_);
+        momentumPrev_ = momentum;
         a_ = aNext;
         ++iter_;
 
@@ -94,13 +98,53 @@ public:
     double objective() const override { return obj_; }
     float  stepSize() const override { return alpha_; }
     float  gradNorm() const override { return gradNorm_; }
+    long   evaluations() const override { return evals_; }
 
 private:
+    /// ePlace 的回溯判据，推迟到下一步开头执行。
+    ///
+    /// 步长只看【已经走过】的两点，迈出去之后没有任何校验。混合尺寸设计收敛到末段时
+    /// 曲率会突变，这一步可能大得离谱：官方 MMS adaptec5 第 511 轮 BB 步长从常态的
+    /// 1~4 跳到 60.3，τ 从 0.1180 弹回 0.3146，此后再没回来。
+    ///
+    /// 上一步的试走点就是本步的前瞻点 u_k，它的梯度刚刚求过。用 u_{k-1}→u_k 重估
+    /// Lipschitz 步长 1/L：上一步走的步长超过它的 1/0.95 倍，说明迈进了更陡的区域，
+    /// 以新估值从 u_{k-1} 重走上一步并重新求值；连同步首那次，每步至多求值 max_backtrack 次。
+    ///
+    /// 不在步末试走求值（DREAMPlace step_nobb 的写法），是因为那样下一步的下降方向
+    /// 是在 eplace 更新 λ、γ 之前求的。τ 一振荡 γ 就跟着摆动三成，方向总是按过时的
+    /// γ 算的：MMS bigblue1 / newblue1 的 mGP 因此收敛到 HPWL 高出三成的解。
+    /// 放在步首则梯度始终是最新的，且校验通过时轨迹与不开回溯逐位相同。
+    void redoIfOvershot(int n) {
+        for (int tries = 1; tries < cfg_.max_backtrack; ++tries) {
+            const double dx = l2Diff(u_.data(), uPrev_.data(), n);
+            const double dg = l2Diff(g_.data(), gPrevTmp_.data(), n);
+            if (!(dx > 0.0) || !(dg > 0.0) || !std::isfinite(dg)) return;
+            const double lip = dx / dg;
+            if (lip > 0.95 * static_cast<double>(alpha_)) return;
+
+            alpha_ = static_cast<float>(lip);
+#pragma omp parallel for schedule(static)
+            for (int i = 0; i < n; ++i) {
+                const size_t k = static_cast<size_t>(i);
+                v_[k] = uPrev_[k] - alpha_ * gPrevTmp_[k];
+                u_[k] = v_[k] + momentumPrev_ * (v_[k] - vPrev_[k]);
+            }
+            if (c_) {
+                c_(v_.data());
+                c_(u_.data());
+            }
+            f_(u_.data(), g_.data(), &obj_);
+            ++evals_;
+        }
+    }
+
     void init(const float* pos, int n) {
         const size_t sz = static_cast<size_t>(n);
         u_.assign(pos, pos + n);
         v_ = u_;
         uPrev_ = u_;
+        vPrev_ = u_;
         g_.assign(sz, 0.f);
         gPrev_.assign(sz, 0.f);
         gPrevTmp_.assign(sz, 0.f);
@@ -170,14 +214,16 @@ private:
     ConstraintFn c_;
     OptConfig    cfg_;
 
-    std::vector<float> u_, v_, uPrev_, uNew_, vNew_;
+    std::vector<float> u_, v_, uPrev_, vPrev_, uNew_, vNew_;
     std::vector<float> g_, gPrev_, gPrevTmp_;
 
     float  a_ = 1.f;
     float  alpha_ = 1.f;
     float  alpha0_ = 1.f;
+    float  momentumPrev_ = 0.f;   ///< 上一步的动量系数，回溯重走时要用
     float  gradNorm_ = 0.f;
     double obj_ = 0.0;
+    long   evals_ = 0;
     int    iter_ = 0;
     bool   inited_ = false;
 };

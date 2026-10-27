@@ -356,6 +356,24 @@ public:
         return bestOv > 0.0;
     }
 
+    /// 与矩形 r 有正面积重叠的宏（不含 exclude），按下标升序写入 out。
+    void macrosOverlapping(const Rect& r, int exclude, std::vector<int>& out) const {
+        int x0i, x1i, y0i, y1i;
+        cellRange(r, x0i, x1i, y0i, y1i);
+        out.clear();
+        ++tick_;
+        for (int gx = x0i; gx <= x1i; ++gx)
+            for (int gy = y0i; gy <= y1i; ++gy)
+                for (int t : cells_[cellIdx(gx, gy)]) {
+                    if (t == exclude || stamp_[static_cast<size_t>(t)] == tick_) continue;
+                    stamp_[static_cast<size_t>(t)] = tick_;
+                    if (overlapArea(r, rectOf(t, cx_[static_cast<size_t>(t)],
+                                              cy_[static_cast<size_t>(t)])) > 0.f)
+                        out.push_back(t);
+                }
+        std::sort(out.begin(), out.end());
+    }
+
     /// 全局重叠总量。按下标序两两求和，与索引无关，可作为 at() 的独立对照。
     double total() const {
         double sum = 0.0;
@@ -769,7 +787,12 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     wl = iwl.total(cx, cy, flipped);
     overlap = om.total();
     disp = 0.0;
-    for (size_t s = 0; s < nM; ++s) disp += dispOf(static_cast<int>(s), cx[s], cy[s]);
+    double maxDispSa = 0.0;
+    for (size_t s = 0; s < nM; ++s) {
+        const double d = dispOf(static_cast<int>(s), cx[s], cy[s]);
+        disp += d;
+        maxDispSa = std::max(maxDispSa, d);
+    }
     r.overlapAfterSa = overlap;
     r.saMs = timer.elapsedMs();
 
@@ -781,83 +804,90 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     //     的宏占 core 面积 48.6%）会在第一轮就全体卡死，后续轮次毫无进展。
     //   * 每轮按当前重叠量【从大到小】处理，先给最堵的宏挪窝，收敛快得多。
     //     排序键取自本轮开始时的快照并以下标破平，保证顺序可复现。
-    std::vector<size_t> order(nM);
-    for (size_t s = 0; s < nM; ++s) order[s] = s;
+    //
+    // zeroCap 限制落脚点离 mGP 原位的距离（以宏的长边计）。不设限时，附近没有空位的
+    // 宏会被扔到窗口边缘：官方 MMS 上修复后最大位移常达 5~20 个典型宏宽。
+    // 调用顺序见下文"从小动作到大动作"。
+    auto gridRepair = [&](double zeroCap) {
+        std::vector<size_t> order(nM);
+        for (size_t s = 0; s < nM; ++s) order[s] = s;
 
-    for (int pass = 0; pass < 12 && overlap > 0.0; ++pass) {
-        std::vector<double> ov(nM);
-        for (size_t s = 0; s < nM; ++s) ov[s] = om.at(static_cast<int>(s), cx[s], cy[s]);
-        std::stable_sort(order.begin(), order.end(),
-                         [&ov](size_t a, size_t b) { return ov[a] > ov[b]; });
+        for (int pass = 0; pass < 12 && overlap > 0.0; ++pass) {
+            std::vector<double> ov(nM);
+            for (size_t s = 0; s < nM; ++s) ov[s] = om.at(static_cast<int>(s), cx[s], cy[s]);
+            std::stable_sort(order.begin(), order.end(),
+                             [&ov](size_t a, size_t b) { return ov[a] > ov[b]; });
 
-        for (size_t s : order) {
-            const double cur = om.at(static_cast<int>(s), cx[s], cy[s]);
-            if (cur <= 0.0) continue;
+            for (size_t s : order) {
+                const double cur = om.at(static_cast<int>(s), cx[s], cy[s]);
+                if (cur <= 0.0) continue;
 
-            // 位移是这里的第一等公民，而且量的是【离 mGP 原位多远】，不是离当前
-            // 位置多远——后者会让已经被挪偏的宏"就地安家"，越修越远。
-            //
-            // 这一点曾经是个真实的失效源：SA 加了位移项后平均只偏 3.2 个单位，
-            // 而本段修复完又把平均位移推到 397.7，mGP 的密度分布照样被毁掉。
-            // 修复阶段必须和 SA 用同一个位移基准。
-            //
-            // 按下面的优先级挑落脚点：
-            //   1. 零重叠位置中【离原位最近】的；
-            //   2. 窗口内没有零重叠位置时，才退而取重叠更小的，且离原位不超过上限。
-            float  zeroX = 0.f, zeroY = 0.f;
-            double zeroDist = std::numeric_limits<double>::infinity();
-            bool   haveZero = false;
+                // 位移是这里的第一等公民，而且量的是【离 mGP 原位多远】，不是离当前
+                // 位置多远——后者会让已经被挪偏的宏"就地安家"，越修越远。
+                //
+                // 这一点曾经是个真实的失效源：SA 加了位移项后平均只偏 3.2 个单位，
+                // 而本段修复完又把平均位移推到 397.7，mGP 的密度分布照样被毁掉。
+                // 修复阶段必须和 SA 用同一个位移基准。
+                //
+                // 按下面的优先级挑落脚点：
+                //   1. 零重叠位置中【离原位最近】的；
+                //   2. 窗口内没有零重叠位置时，才退而取重叠更小的，且离原位不超过上限。
+                float  zeroX = 0.f, zeroY = 0.f;
+                double zeroDist = std::numeric_limits<double>::infinity();
+                bool   haveZero = false;
 
-            float  fbX = 0.f, fbY = 0.f;
-            double fbOv = cur;
-            bool   haveFallback = false;
+                float  fbX = 0.f, fbY = 0.f;
+                double fbOv = cur;
+                bool   haveFallback = false;
 
-            const float stepX = std::max(om.width(static_cast<int>(s)) * 0.25f, snap.site);
-            const float stepY = std::max(om.height(static_cast<int>(s)) * 0.25f, snap.row);
-            const int   span = 12 + 2 * pass;
-            // 允许偏离原位的上限，逐轮放宽
-            const double maxDisp =
-                static_cast<double>(2 + pass) *
-                std::max(om.width(static_cast<int>(s)), om.height(static_cast<int>(s)));
+                const float stepX = std::max(om.width(static_cast<int>(s)) * 0.25f, snap.site);
+                const float stepY = std::max(om.height(static_cast<int>(s)) * 0.25f, snap.row);
+                const int   span = 12 + 2 * pass;
+                // 允许偏离原位的上限，逐轮放宽
+                const double side =
+                    std::max(om.width(static_cast<int>(s)), om.height(static_cast<int>(s)));
+                const double zeroLimit = zeroCap * side;
+                const double maxDisp = std::min(static_cast<double>(2 + pass) * side, zeroLimit);
 
-            for (int ry = -span; ry <= span; ++ry) {
-                for (int rx = -span; rx <= span; ++rx) {
-                    float nx = cx[s] + static_cast<float>(rx) * stepX;
-                    float ny = cy[s] + static_cast<float>(ry) * stepY;
-                    snap(om, static_cast<int>(s), nx, ny);
-                    const double d = dispOf(static_cast<int>(s), nx, ny);   // 离 mGP 原位
-                    const double o = om.at(static_cast<int>(s), nx, ny);
-                    if (o <= 0.0) {
-                        if (d < zeroDist) {
-                            zeroDist = d;
-                            zeroX = nx;
-                            zeroY = ny;
-                            haveZero = true;
+                for (int ry = -span; ry <= span; ++ry) {
+                    for (int rx = -span; rx <= span; ++rx) {
+                        float nx = cx[s] + static_cast<float>(rx) * stepX;
+                        float ny = cy[s] + static_cast<float>(ry) * stepY;
+                        snap(om, static_cast<int>(s), nx, ny);
+                        const double d = dispOf(static_cast<int>(s), nx, ny);   // 离 mGP 原位
+                        const double o = om.at(static_cast<int>(s), nx, ny);
+                        if (o <= 0.0 && d <= zeroLimit) {
+                            if (d < zeroDist) {
+                                zeroDist = d;
+                                zeroX = nx;
+                                zeroY = ny;
+                                haveZero = true;
+                            }
+                        } else if (!haveZero && d <= maxDisp && o < fbOv - 1e-9) {
+                            fbOv = o;
+                            fbX = nx;
+                            fbY = ny;
+                            haveFallback = true;
                         }
-                    } else if (!haveZero && d <= maxDisp && o < fbOv - 1e-9) {
-                        fbOv = o;
-                        fbX = nx;
-                        fbY = ny;
-                        haveFallback = true;
                     }
                 }
-            }
 
-            if (haveZero) {
-                om.setPos(static_cast<int>(s), zeroX, zeroY);
-                ++r.repaired;
-            } else if (haveFallback) {
-                om.setPos(static_cast<int>(s), fbX, fbY);
-                ++r.repaired;
+                if (haveZero) {
+                    om.setPos(static_cast<int>(s), zeroX, zeroY);
+                    ++r.repaired;
+                } else if (haveFallback) {
+                    om.setPos(static_cast<int>(s), fbX, fbY);
+                    ++r.repaired;
+                }
             }
+            // 一轮没有进展也不能收手：窗口逐轮放大，下一轮可能就够得着空位。
+            // 早期这里写的是"无进展即 break"。网格搜索排在最前时其他宏每轮都在被修好，
+            // 轮次能走下去；改成先做分离与推挤后，只剩最难的宏，第一轮的小窗口一无所获
+            // 就当场退出——ISPD bigblue3 上一个 504×216 的宏困在固定阻挡阵列里
+            // （通道只有 144 宽），残留 18408。只处理仍有重叠的宏，多跑几轮代价很小。
+            overlap = om.total();
         }
-        const double after = om.total();
-        if (after >= overlap) {   // 本轮毫无进展，换下面的分离平移去啃
-            overlap = after;
-            break;
-        }
-        overlap = after;
-    }
+    };
 
     // ---- 最小分离平移：网格搜索啃不动的零头交给它。
     //
@@ -868,37 +898,178 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     //
     // "最大重叠对象"含固定阻挡（见 OverlapModel::worstRect）。早期这里只遍历宏，
     // 只压在阻挡上的宏会因"找不到邻居"被跳过——bigblue3 的残留重叠就全是这种。
-    for (int pass = 0; pass < 30 && overlap > 0.0; ++pass) {
-        bool moved = false;
-        for (size_t s = 0; s < nM; ++s) {
-            const int si = static_cast<int>(s);
-            if (om.at(si, cx[s], cy[s]) <= 0.0) continue;
-            const Rect a = om.rectOf(si, cx[s], cy[s]);
+    auto separateRepair = [&]() {
+        for (int pass = 0; pass < 30 && overlap > 0.0; ++pass) {
+            bool moved = false;
+            for (size_t s = 0; s < nM; ++s) {
+                const int si = static_cast<int>(s);
+                if (om.at(si, cx[s], cy[s]) <= 0.0) continue;
+                const Rect a = om.rectOf(si, cx[s], cy[s]);
 
-            Rect b{};
-            if (!om.worstRect(si, cx[s], cy[s], b)) continue;
+                Rect b{};
+                if (!om.worstRect(si, cx[s], cy[s], b)) continue;
 
-            const float dxL = b.lx - a.hx, dxR = b.hx - a.lx;   // 推到左侧 / 右侧
-            const float dyD = b.ly - a.hy, dyU = b.hy - a.ly;   // 推到下方 / 上方
-            const float cand[4][2] = {{dxL, 0.f}, {dxR, 0.f}, {0.f, dyD}, {0.f, dyU}};
+                const float dxL = b.lx - a.hx, dxR = b.hx - a.lx;   // 推到左侧 / 右侧
+                const float dyD = b.ly - a.hy, dyU = b.hy - a.ly;   // 推到下方 / 上方
+                const float cand[4][2] = {{dxL, 0.f}, {dxR, 0.f}, {0.f, dyD}, {0.f, dyU}};
 
-            double bestOv = om.at(si, cx[s], cy[s]);
-            float bestPx = cx[s], bestPy = cy[s];
-            for (const auto& d : cand) {
-                float nx = cx[s] + d[0], ny = cy[s] + d[1];
-                snap(om, si, nx, ny);
-                const double o = om.at(si, nx, ny);
-                if (o < bestOv - 1e-9) { bestOv = o; bestPx = nx; bestPy = ny; }
+                double bestOv = om.at(si, cx[s], cy[s]);
+                float bestPx = cx[s], bestPy = cy[s];
+                for (const auto& d : cand) {
+                    float nx = cx[s] + d[0], ny = cy[s] + d[1];
+                    snap(om, si, nx, ny);
+                    const double o = om.at(si, nx, ny);
+                    if (o < bestOv - 1e-9) { bestOv = o; bestPx = nx; bestPy = ny; }
+                }
+                if (bestPx != cx[s] || bestPy != cy[s]) {
+                    om.setPos(si, bestPx, bestPy);
+                    ++r.repaired;
+                    moved = true;
+                }
             }
-            if (bestPx != cx[s] || bestPy != cy[s]) {
-                om.setPos(si, bestPx, bestPy);
-                ++r.repaired;
+            const double after = om.total();
+            if (!moved || after >= overlap) { overlap = after; break; }
+            overlap = after;
+        }
+    };
+
+    // ---- 连锁推挤：上面两段每次只挪一个宏，邻居挡在路上就无路可走。
+    //
+    // 官方 MMS 上的残留重叠全是这种：一列宏首尾相接（间隙为 0），卡在 core 边界
+    // 或大宏旁边，其中一对叠了一两行。newblue3 顶上那对只叠 36，可把下面那个宏
+    // 下推 36 会撞上再下一个宏，新增 36×13502 的重叠，比原有的还大，于是被拒。
+    //
+    // 这里让被推的宏把它前方挡路的宏按所需的量往同一方向推，逐级传递，直到碰上
+    // 能吸收位移的空隙。只向推移方向的【前方】传递，所以链不会成环；推出 core
+    // 即判不可行。整串当作一个事务：局部重叠下降才提交，否则原样恢复。
+    auto chainRepair = [&]() {
+        for (int pass = 0; pass < 20 && overlap > 0.0; ++pass) {
+            constexpr int kMaxChain = 64;
+            std::vector<float> need(nM, 0.f);
+            std::vector<int>   mark(nM, -1);
+            std::vector<int>   chain, hits;
+            std::vector<float> keepX, keepY;
+            int tick = 0;
+            const float coreLx = db.coreRegion.lx, coreLy = db.coreRegion.ly;
+            const float coreHx = db.coreRegion.hx, coreHy = db.coreRegion.hy;
+
+            // 以 s0 为链尾、沿 axis 方向 sign 推 shift0，求出整条链及各宏推移量
+            auto buildChain = [&](int s0, int axis, int sign, float shift0) {
+                const float unit = axis == 0 ? snap.site : snap.row;
+                auto ceilGrid = [unit](float v) { return std::ceil(v / unit - 1e-4f) * unit; };
+                const float cap = shift0 + 2.f * static_cast<float>(refLen);
+                ++tick;
+                chain.assign(1, s0);
+                mark[static_cast<size_t>(s0)] = tick;
+                need[static_cast<size_t>(s0)] = ceilGrid(shift0);
+                for (size_t qi = 0; qi < chain.size(); ++qi) {
+                    if (qi > 4 * kMaxChain) return false;
+                    const int   t = chain[qi];
+                    const float d = need[static_cast<size_t>(t)];
+                    const Rect a = om.rectOf(t, cx[static_cast<size_t>(t)] + (axis == 0 ? sign * d : 0.f),
+                                             cy[static_cast<size_t>(t)] + (axis == 1 ? sign * d : 0.f));
+                    if (a.lx < coreLx - 1e-3f || a.hx > coreHx + 1e-3f || a.ly < coreLy - 1e-3f ||
+                        a.hy > coreHy + 1e-3f)
+                        return false;
+                    om.macrosOverlapping(a, t, hits);
+                    const float ct = axis == 0 ? cx[static_cast<size_t>(t)] : cy[static_cast<size_t>(t)];
+                    for (int u : hits) {
+                        const float cu = axis == 0 ? cx[static_cast<size_t>(u)] : cy[static_cast<size_t>(u)];
+                        if ((cu - ct) * static_cast<float>(sign) <= 0.f) continue;   // 只推前方的
+                        const Rect b = om.rectOf(u, cx[static_cast<size_t>(u)], cy[static_cast<size_t>(u)]);
+                        const float req = ceilGrid(sign > 0 ? (axis == 0 ? a.hx - b.lx : a.hy - b.ly)
+                                                            : (axis == 0 ? b.hx - a.lx : b.hy - a.ly));
+                        if (req > cap) return false;
+                        const bool seen = mark[static_cast<size_t>(u)] == tick;
+                        if (seen && req <= need[static_cast<size_t>(u)]) continue;
+                        if (!seen) {
+                            if (static_cast<int>(chain.size()) >= kMaxChain) return false;
+                            mark[static_cast<size_t>(u)] = tick;
+                        }
+                        need[static_cast<size_t>(u)] = req;
+                        chain.push_back(u);   // 推移量变大就重新入队，按新量再往前传
+                    }
+                }
+                // 重新入队会留下重复项，去重后按下标排序，保证后续求和次序固定
+                std::sort(chain.begin(), chain.end());
+                chain.erase(std::unique(chain.begin(), chain.end()), chain.end());
+                return true;
+            };
+            // 链上各宏自身的重叠之和，扣掉链内两两被重复计入的部分
+            auto chainOverlap = [&]() {
+                double sum = 0.0;
+                for (int u : chain) sum += om.at(u, cx[static_cast<size_t>(u)], cy[static_cast<size_t>(u)]);
+                for (size_t i = 0; i < chain.size(); ++i)
+                    for (size_t j = i + 1; j < chain.size(); ++j) {
+                        const int u = chain[i], v = chain[j];
+                        sum -= overlapArea(
+                            om.rectOf(u, cx[static_cast<size_t>(u)], cy[static_cast<size_t>(u)]),
+                            om.rectOf(v, cx[static_cast<size_t>(v)], cy[static_cast<size_t>(v)]));
+                    }
+                return sum;
+            };
+            // 应用整条链，返回局部重叠的下降量；keep 为 false 时恢复原状
+            auto applyChain = [&](int axis, int sign, bool keep) {
+                const double before = chainOverlap();
+                keepX.resize(chain.size());
+                keepY.resize(chain.size());
+                for (size_t k = 0; k < chain.size(); ++k) {
+                    const int u = chain[k];
+                    keepX[k] = cx[static_cast<size_t>(u)];
+                    keepY[k] = cy[static_cast<size_t>(u)];
+                    const float d = static_cast<float>(sign) * need[static_cast<size_t>(u)];
+                    om.setPos(u, keepX[k] + (axis == 0 ? d : 0.f), keepY[k] + (axis == 1 ? d : 0.f));
+                }
+                const double gain = before - chainOverlap();
+                if (!keep)
+                    for (size_t k = 0; k < chain.size(); ++k) om.setPos(chain[k], keepX[k], keepY[k]);
+                return gain;
+            };
+
+            bool moved = false;
+            for (size_t s = 0; s < nM; ++s) {
+                const int si = static_cast<int>(s);
+                if (om.at(si, cx[s], cy[s]) <= 0.0) continue;
+                Rect b{};
+                if (!om.worstRect(si, cx[s], cy[s], b)) continue;
+                const Rect a = om.rectOf(si, cx[s], cy[s]);
+                // 脱离 b 所需的最小推移：左、右、下、上
+                const float amt[4] = {a.hx - b.lx, b.hx - a.lx, a.hy - b.ly, b.hy - a.ly};
+                const int   axisOf[4] = {0, 0, 1, 1}, signOf[4] = {-1, 1, -1, 1};
+
+                int bestDir = -1;
+                double bestGain = 1e-6;
+                for (int k = 0; k < 4; ++k) {
+                    if (!(amt[k] > 0.f) || !buildChain(si, axisOf[k], signOf[k], amt[k])) continue;
+                    const double g = applyChain(axisOf[k], signOf[k], false);
+                    if (g > bestGain) { bestGain = g; bestDir = k; }
+                }
+                if (bestDir < 0) continue;
+                buildChain(si, axisOf[bestDir], signOf[bestDir], amt[bestDir]);
+                applyChain(axisOf[bestDir], signOf[bestDir], true);
+                r.chained += static_cast<int>(chain.size());
                 moved = true;
             }
+            const double after = om.total();
+            if (!moved || after >= overlap) { overlap = after; break; }
+            overlap = after;
         }
-        const double after = om.total();
-        if (!moved || after >= overlap) { overlap = after; break; }
-        overlap = after;
+    };
+
+    // 从小动作到大动作。分离平移与连锁推挤算的是精确的最小推移量；网格搜索的
+    // 候选步长是宏尺寸的 1/4，大宏一步就上千，残留重叠哪怕只差几十个单位也只能
+    // 往外跳好几步。newblue7 上一个长边近 7000 的宏就这样被挪了 20135。
+    // 网格搜索先限距，仍有残留才放开距离，并再给分离与推挤一次机会。
+    constexpr double kLocalCap = 3.0;
+    separateRepair();
+    chainRepair();
+    gridRepair(kLocalCap);
+    separateRepair();
+    chainRepair();
+    if (overlap > 0.0) {
+        gridRepair(std::numeric_limits<double>::infinity());
+        separateRepair();
+        chainRepair();
     }
 
     // ---- 写回 db，并把宏钉死，后续 cGP 不再移动它们
@@ -926,13 +1097,23 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
 
     const double ms = timer.elapsedMs();
     sink.recordDuration("mLG", ms);
+    // 必须在全部修复之后量：修复段的远距离落脚正是最大位移的来源
+    double maxDisp = 0.0;
+    int    argMax = 0;
+    disp = 0.0;
+    for (size_t s = 0; s < nM; ++s) {
+        const double d = dispOf(static_cast<int>(s), cx[s], cy[s]);
+        disp += d;
+        if (d > maxDisp) { maxDisp = d; argMax = static_cast<int>(s); }
+    }
     const double meanDisp = disp / static_cast<double>(nM);
-    SP_INFO("mLG: 宏平均位移 %.1f（= %.2f 个宏宽，典型宏宽 %.0f，δ=%.2f）", meanDisp,
-            meanDisp / refLen, refLen, kDelta);
+    SP_INFO("mLG: 宏位移 均值 %.1f / 最大 %.1f（%.0fx%.0f 的宏；SA 后最大 %.1f），"
+            "典型宏宽 %.0f，δ=%.2f",
+            meanDisp, maxDisp, om.width(argMax), om.height(argMax), maxDispSa, refLen, kDelta);
     (void)dispBefore;
-    SP_INFO("mLG: %d 个宏，%d 次移动接受 %d（%.1f%%），贪心修复 %d 次",
+    SP_INFO("mLG: %d 个宏，%d 次移动接受 %d（%.1f%%），贪心修复 %d 次，连锁推挤移动 %d 个宏次",
             r.numMacros, r.moves, r.accepted,
-            100.0 * r.accepted / std::max(1, r.moves), r.repaired);
+            100.0 * r.accepted / std::max(1, r.moves), r.repaired, r.chained);
     // 分账：重叠是 SA 消掉的还是修复消掉的、时间各花在哪。没有这一行就无从判断
     // SA 的移动预算是否花得值。
     SP_INFO("mLG 初温: 典型恶化 dCost=%.3g → t0=%.3g（旧标定会给 %.3g）", r.typicalWorsen, r.t0,

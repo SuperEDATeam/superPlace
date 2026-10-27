@@ -256,6 +256,7 @@ GpResult EPlace::run(GpStage stage) {
     OptConfig oc;
     oc.max_iter = maxIter;
     oc.use_bb = cfg.use_bb;
+    oc.backtrack = cfg.gp_backtrack;
     auto opt = makeNesterov(
         [&s](const float* p, float* g, double* o) { s.objAndGrad(p, g, o); },
         [&s](float* p) { s.clamp(p); }, oc);
@@ -273,17 +274,40 @@ GpResult EPlace::run(GpStage stage) {
     // 实测 MMS adaptec4（1329 个可移动宏）：第 700 轮起 τ 就钉在 0.1396 不动，
     // 跑到第 3000 轮 τ 仍是 0.1398，HPWL 却从 1.83e8 涨到 9.80e8。跑得越久结果越差。
     // 故记录 τ 最优时的解，停滞则回到它——与 mLG 保留最优解是同一个道理。
-    std::vector<float> bestPos = s.pos;
+    //
+    // 停滞计数只在 τ 比参照点低出 gp_stagnation_min_gain 时清零。门槛曾是 0.1%，
+    // 官方 MMS bigblue2 在平台期每 200 轮恰好改善 0.10%~0.14%，保护始终不触发：
+    // τ 从 0.1661 磨到 0.1616 花了 650 轮，HPWL 涨了 2.5 倍。
+    // 而 ISPD + MMS 所有最终收敛的设计，任意 200 轮内最优 τ 至少改善 7.1%。
+    //
+    // 回退点用同一把尺子挑：τ 不超过最优值 (1+min_gain) 的点里 HPWL 最低的那个。
+    // 平台末段 λ 很大，τ 每降一点 HPWL 都涨得很快——ISPD newblue4 上 τ 从 0.1024
+    // 磨到 0.1012 要多付 2% 的线长。既然判停滞时不把这点改善算作进展，回退时也不该
+    // 为它买单。
+    //
+    // 只留一个候选点不够：末段 τ 缓慢下降，最优值每更新一次容差线就下移，旧候选
+    // 出界后只能换成当前点——恰是最新、HPWL 最高的那个（newblue4 上回退到了第 449 轮
+    // 而不是第 435 轮）。改为按 τ 阶梯留快照：τ 每比上一个快照好 min_gain/2 就存一份，
+    // 出界的丢弃。最新快照的 τ 不超过最优值的 (1+min_gain/2) 倍，永不出界；容差内
+    // 同时最多约 3 份，内存有上界。
+    struct Snapshot {
+        float  tau;
+        double hpwl;
+        int    iter;
+        std::vector<float> pos;
+    };
+    std::vector<Snapshot> snaps;           // τ 严格递减
+    std::vector<std::vector<float>> spare; // 丢弃快照的缓冲区，复用以免反复分配
     float  bestTau = std::numeric_limits<float>::infinity();
-    double bestHpwl = 0.0;
-    int    bestIter = -1;
+    float  refTau = std::numeric_limits<float>::infinity();
     int    sinceImprove = 0;
+    const float minGain = std::clamp(cfg.gp_stagnation_min_gain, 0.f, 0.5f);
     bool   stagnated = false;
 
     for (int iter = 0; iter < maxIter; ++iter) {
         opt->step(s.pos.data(), 2 * n);
 
-        // τ / HPWL 取自本轮求值点（Nesterov 的前瞻点 u_k），这是标准做法：
+        // τ / HPWL 取自本轮最后一次求值的点（Nesterov 的前瞻点 u），这是标准做法：
         // 梯度在哪里求的，指标就在哪里报，二者一致才好判读收敛曲线。
         if (!std::isfinite(s.hpwl) || !std::isfinite(s.tau)) {
             SP_ERROR("%s: 第 %d 轮出现 NaN/Inf，中止", toString(stage), iter);
@@ -326,38 +350,62 @@ GpResult EPlace::run(GpStage stage) {
         result.iterations = iter + 1;
         if (stage != GpStage::kFillerOnly && s.tau < targetTau) {
             result.converged = true;
+            // 达标的是前瞻点 u（db 此刻停在 u），必须交付它而不是 v。u 比 v 多走了一步
+            // 动量，二者的 τ 可以分处阈值两侧：官方 MMS adaptec5 判定达标，交付的 v
+            // 实测 τ=0.1005。
+            s.gather(s.pos.data());
             break;
         }
 
         if (stage != GpStage::kFillerOnly && cfg.gp_stagnation_window > 0) {
-            // 用相对量判"有改善"：τ 在 1e-4 级别的抖动不算进展
-            if (s.tau < bestTau * 0.999f) {
-                bestTau = s.tau;
-                bestHpwl = s.hpwl;
-                bestIter = iter;
+            if (s.tau < refTau * (1.f - minGain)) {
+                refTau = s.tau;
+                sinceImprove = 0;
+            } else {
+                ++sinceImprove;
+            }
+            bestTau = std::min(bestTau, s.tau);
+            const float tol = bestTau * (1.f + minGain);
+            while (!snaps.empty() && snaps.front().tau > tol) {
+                spare.push_back(std::move(snaps.front().pos));
+                snaps.erase(snaps.begin());
+            }
+            if (snaps.empty() || s.tau * (1.f + 0.5f * minGain) <= snaps.back().tau) {
+                Snapshot snap{s.tau, s.hpwl, iter, {}};
+                if (!spare.empty()) {
+                    snap.pos = std::move(spare.back());
+                    spare.pop_back();
+                }
+                snap.pos.resize(s.pos.size());
                 // 必须保存【测得这个 τ 的那个点】。τ 与 HPWL 都是在 objAndGrad 里对
                 // Nesterov 的前瞻点 u 算的，而 step() 返回后 s.pos 是当前解 v。
                 // 早期写的是 bestPos = s.pos，把 τ(u) 配给了 v 的坐标。收敛平稳时
                 // u≈v 看不出来，但停滞保护恰恰在轨迹震荡时才触发，此时两者相差很远：
                 // 官方 MMS adaptec5 上声称回退到"最优 τ=0.1180"，回退后实测却是 0.2587。
-                // objAndGrad 把 u 写进了 db，step() 不碰 db，所以此刻 db 仍停在 u。
-                s.gather(bestPos.data());
-                sinceImprove = 0;
-            } else if (++sinceImprove >= cfg.gp_stagnation_window) {
+                // objAndGrad 把 u 写进了 db，step() 返回后不再改 db，所以此刻 db 仍停在 u。
+                s.gather(snap.pos.data());
+                snaps.push_back(std::move(snap));
+            }
+            if (sinceImprove >= cfg.gp_stagnation_window) {
                 stagnated = true;
-                SP_WARN("%s: τ 连续 %d 轮无改善（停在 %.4f，最好 %.4f @ 第 %d 轮），"
-                        "判定停滞并回退到最优解", toString(stage), sinceImprove, s.tau, bestTau,
-                        bestIter);
-                SP_WARN("%s: 此刻 HPWL=%.6g，而最优解处 HPWL=%.6g —— 继续跑只会让线长"
-                        "单调膨胀而 τ 毫无改善", toString(stage), s.hpwl, bestHpwl);
-                s.pos = bestPos;
+                // 容差内 HPWL 最低者；平局取较早的
+                const Snapshot* pick = &snaps.front();
+                for (const Snapshot& sn : snaps)
+                    if (sn.hpwl < pick->hpwl) pick = &sn;
+                SP_WARN("%s: τ 连续 %d 轮改善不足 %.1f%%（停在 %.4f，最好 %.4f），判定停滞；"
+                        "回退到第 %d 轮（τ=%.4f，最优的 %.1f%% 以内 HPWL 最低）",
+                        toString(stage), sinceImprove, 100.f * minGain, s.tau, bestTau, pick->iter,
+                        pick->tau, 100.f * minGain);
+                SP_WARN("%s: 此刻 HPWL=%.6g，回退点 HPWL=%.6g —— 继续跑只会让线长"
+                        "单调膨胀而 τ 毫无改善", toString(stage), s.hpwl, pick->hpwl);
+                s.pos = pick->pos;
                 break;
             }
         }
     }
 
     // 优化器对外暴露的是"当前解" v，而求值点是前瞻点 u；循环里 db 停在 u 上，
-    // 这里必须把 v 写回去，否则交付的不是优化器认定的解。
+    // 这里必须把 s.pos 写回去。s.pos 通常是 v；达标与停滞回退时是测得该 τ 的 u。
     s.clamp(s.pos.data());
     s.scatter(s.pos.data());
     s.grid.accumulate(db);
@@ -372,8 +420,8 @@ GpResult EPlace::run(GpStage stage) {
                           : result.converged             ? "（达标）"
                           : stagnated                    ? "（τ 停滞，已回退到最优解）"
                                                          : "（耗尽迭代上限）";
-    SP_INFO("%s 结束：%d 轮，HPWL=%.6g，τ=%.4f%s", toString(stage), result.iterations, result.hpwl,
-            result.overflow, verdict);
+    SP_INFO("%s 结束：%d 轮（求值 %ld 次），HPWL=%.6g，τ=%.4f%s", toString(stage),
+            result.iterations, opt->evaluations(), result.hpwl, result.overflow, verdict);
     return result;
 }
 

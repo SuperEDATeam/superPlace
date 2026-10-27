@@ -226,6 +226,39 @@ void testIncrementalMatchesFullHpwl() {
     CHECK_NEAR(r.hpwlAfter, full, 1e-6 * std::max(1.0, full));
 }
 
+// ------------------------------------------------------------- 连锁推挤
+void testPushChain() {
+    // 官方 MMS newblue3 的残留重叠缩微版：一列宏首尾相接，顶在 core 上沿，
+    // 右侧整片是固定阻挡。最上面一对叠 30，最底下只空出 30——这个空隙放不下任何宏，
+    // 单推一个宏只会把重叠转给下一对，总量不降。唯有整串下推 30 才能解开。
+    std::vector<NodeSpec> specs;
+    const float ly[5] = {800.f, 630.f, 430.f, 230.f, 30.f};
+    for (float y : ly) specs.push_back({200.f, y + 100.f, 400.f, 200.f, sp::F_MACRO});
+    specs.push_back({700.f, 500.f, 600.f, 1000.f, sp::F_FIXED});
+    std::vector<std::vector<int>> nets;
+    for (int i = 0; i + 1 < 5; ++i) nets.push_back({i, i + 1});
+
+    sp::PlaceDB db = makeDb(1000.f, 10.f, specs, nets);
+    const double before = pairwiseMacroOverlap(db);
+    sp::MetricsSink sink;
+    sp::Config cfg = makeCfg();
+    cfg.macro_sa_moves = 1;   // 让 SA 几乎不动，专测修复段
+    const sp::MacroSaResult r = sp::legalizeMacros(db, cfg, sink);
+
+    const double after = pairwiseMacroOverlap(db);
+    double maxDisp = 0.0;
+    for (int i = 0; i < 5; ++i)
+        maxDisp = std::max(maxDisp, std::hypot(double(db.node_x[size_t(i)] - specs[size_t(i)].cx),
+                                               double(db.node_y[size_t(i)] - specs[size_t(i)].cy)));
+    std::printf("  [chain]    宏-宏重叠 %.0f -> %.0f，含阻挡 %.0f，连锁移动 %d 个宏次，最大位移 %.1f\n",
+                before, after, r.overlapAfter, r.chained, maxDisp);
+    CHECK_TRUE(before > 0.0);
+    CHECK_NEAR(r.overlapAfter, 0.0, 1e-6);
+    CHECK_TRUE(r.chained >= 4);
+    // 整串只需下推 30，不该把宏搬到别处去
+    CHECK_TRUE(maxDisp <= 30.0 + 1e-3);
+}
+
 // --------------------------------------------------------------------- 确定性
 void testDeterminism() {
     auto run = [] {
@@ -260,6 +293,7 @@ int main() {
     testMacrosBecomeFixed();
     testWirelengthControlled();
     testIncrementalMatchesFullHpwl();
+    testPushChain();
     testDeterminism();
     return sptest::summary("test_macro_sa");
 }

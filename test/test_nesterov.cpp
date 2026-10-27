@@ -147,6 +147,93 @@ void testMonotoneTrend() {
     CHECK_TRUE(opt->objective() < 1e-4);
 }
 
+/// 回溯路径：良态与病态问题都要收敛，且结果逐位确定
+void testBacktrackConverges() {
+    const int n = 50;
+    Quadratic q;
+    q.coef.resize(static_cast<size_t>(n));
+    q.target.resize(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        q.coef[static_cast<size_t>(i)] = 0.01f * std::pow(10.f, 3.f * i / (n - 1));
+        q.target[static_cast<size_t>(i)] = -5.f + 0.3f * i;
+    }
+    sp::OptConfig cfg;
+    cfg.backtrack = true;
+
+    double obj0 = 0.0;
+    auto run = [&](std::vector<float>& pos, long* evals) {
+        pos.assign(static_cast<size_t>(n), 100.f);
+        std::vector<float> g(static_cast<size_t>(n));
+        q(pos.data(), g.data(), &obj0);
+        auto opt = sp::makeNesterov(q, nullptr, cfg);
+        for (int k = 0; k < 2000; ++k) opt->step(pos.data(), n);
+        *evals = opt->evaluations();
+        return opt->objective();
+    };
+    std::vector<float> a, b;
+    long evA = 0, evB = 0;
+    const double objA = run(a, &evA);
+    run(b, &evB);
+    std::printf("  [backtrack]  ill-cond obj %.4e -> %.4e，2000 步求值 %ld 次\n", obj0, objA, evA);
+    CHECK_TRUE(objA < obj0 * 1e-6);
+    CHECK_TRUE(a == b);
+    CHECK_TRUE(evA == evB);
+}
+
+/// 回溯必须能把过大的步长拉回来：首步故意给到 1/L 的 50 倍。
+///
+/// 常曲率二次函数上 BB 步长恰是精确的 1/L，所以不开回溯时第二步也能把当前解 v
+/// 拉回原点——区别在动量：坏步的位移被带进了动量，前瞻点 u 还会被甩出去好几轮，
+/// 而梯度正是在 u 上求的。回溯重走了首步，动量里不留坏步的痕迹。
+/// 故比较第 3 步时前瞻点上的目标值。
+void testBacktrackRecoversFromHugeStep() {
+    const int n = 32;
+    Quadratic q;
+    q.coef.assign(static_cast<size_t>(n), 4.0f);   // L = 4，安全步长 0.25
+    q.target.assign(static_cast<size_t>(n), 3.f);
+
+    auto threeSteps = [&](bool backtrack, long* evals) {
+        sp::OptConfig cfg;
+        cfg.init_step = 50.f / 4.f;
+        cfg.backtrack = backtrack;
+        std::vector<float> pos(static_cast<size_t>(n), 0.f);
+        auto opt = sp::makeNesterov(q, nullptr, cfg);
+        for (int k = 0; k < 3; ++k) opt->step(pos.data(), n);
+        *evals = opt->evaluations();
+        return opt->objective();
+    };
+    long evBt = 0, evPlain = 0;
+    const double objBt = threeSteps(true, &evBt);
+    const double objPlain = threeSteps(false, &evPlain);
+    std::printf("  [backtrack]  首步给 50/L：第 3 步前瞻点目标值 回溯 %.3e（求值 %ld 次），"
+                "不回溯 %.3e（求值 %ld 次）\n", objBt, evBt, objPlain, evPlain);
+    CHECK_TRUE(objBt < 1e-6);
+    CHECK_TRUE(objPlain > 1e3);
+    CHECK_EQ(evBt, evPlain + 1);   // 恰好重走了一次
+}
+
+/// 校验通过时不得改变轨迹：良态凸问题上步长从不超标，开不开回溯结果应逐位相同
+void testBacktrackIsNoopWhenStepIsSafe() {
+    const int n = 64;
+    Quadratic q;
+    q.coef.assign(static_cast<size_t>(n), 2.0f);
+    q.target.resize(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) q.target[static_cast<size_t>(i)] = 10.f + 0.5f * i;
+    auto run = [&](bool backtrack) {
+        sp::OptConfig cfg;
+        cfg.backtrack = backtrack;
+        std::vector<float> pos(static_cast<size_t>(n), 0.f);
+        auto opt = sp::makeNesterov(q, nullptr, cfg);
+        for (int k = 0; k < 100; ++k) opt->step(pos.data(), n);
+        return std::make_pair(pos, opt->evaluations());
+    };
+    const auto a = run(true), b = run(false);
+    std::printf("  [backtrack]  安全步长下：求值 %ld vs %ld 次，坐标逐位%s\n", a.second, b.second,
+                a.first == b.first ? "相同" : "不同");
+    CHECK_TRUE(a.first == b.first);
+    CHECK_EQ(a.second, b.second);
+}
+
 }  // namespace
 
 int main() {
@@ -155,5 +242,8 @@ int main() {
     testConstraint();
     testDeterminism();
     testMonotoneTrend();
+    testBacktrackConverges();
+    testBacktrackRecoversFromHugeStep();
+    testBacktrackIsNoopWhenStepIsSafe();
     return sptest::summary("test_nesterov");
 }

@@ -26,6 +26,10 @@ using ConstraintFn = std::function<void(float* pos)>;
 struct OptConfig {
     int   max_iter = 1000;
     bool  use_bb   = true;      ///< Barzilai-Borwein 步长
+    /// 走完一步后在目的点重估 1/L，步长超标则退回重走（ePlace 的回溯判据）。
+    /// 校验推迟到下一步开头，借用那里本来就要做的求值；通过时轨迹不变。
+    bool  backtrack = false;
+    int   max_backtrack = 10;   ///< 每步最多试走次数
     float init_step = 0.f;      ///< <=0 表示用扰动法自动估计首步步长
     float init_perturb = 0.1f;  ///< 扰动法的相对扰动幅度
 };
@@ -44,6 +48,7 @@ public:
     virtual double objective() const = 0;   ///< 最近一次求得的目标值
     virtual float  stepSize() const = 0;     ///< 最近一次使用的 α
     virtual float  gradNorm() const = 0;     ///< 最近一次梯度的 L2 范数
+    virtual long   evaluations() const = 0;  ///< 累计调用目标函数的次数（不含首步估计）
 
 protected:
     Optimizer() = default;

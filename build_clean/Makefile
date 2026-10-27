@@ -166,6 +166,19 @@ superplace-quiz/fast:
 .PHONY : superplace-quiz/fast
 
 #=============================================================================
+# Target rules for targets named superplace-mlg-replay
+
+# Build rule for target.
+superplace-mlg-replay: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 superplace-mlg-replay
+.PHONY : superplace-mlg-replay
+
+# fast build rule for target.
+superplace-mlg-replay/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/superplace-mlg-replay.dir/build.make CMakeFiles/superplace-mlg-replay.dir/build
+.PHONY : superplace-mlg-replay/fast
+
+#=============================================================================
 # Target rules for targets named test_parser
 
 # Build rule for target.
@@ -945,6 +958,30 @@ src/util/metrics.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/superplace.dir/build.make CMakeFiles/superplace.dir/src/util/metrics.cpp.s
 .PHONY : src/util/metrics.cpp.s
 
+tools/mlg_replay/main.o: tools/mlg_replay/main.cpp.o
+.PHONY : tools/mlg_replay/main.o
+
+# target to build an object file
+tools/mlg_replay/main.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/superplace-mlg-replay.dir/build.make CMakeFiles/superplace-mlg-replay.dir/tools/mlg_replay/main.cpp.o
+.PHONY : tools/mlg_replay/main.cpp.o
+
+tools/mlg_replay/main.i: tools/mlg_replay/main.cpp.i
+.PHONY : tools/mlg_replay/main.i
+
+# target to preprocess a source file
+tools/mlg_replay/main.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/superplace-mlg-replay.dir/build.make CMakeFiles/superplace-mlg-replay.dir/tools/mlg_replay/main.cpp.i
+.PHONY : tools/mlg_replay/main.cpp.i
+
+tools/mlg_replay/main.s: tools/mlg_replay/main.cpp.s
+.PHONY : tools/mlg_replay/main.s
+
+# target to generate assembly for a file
+tools/mlg_replay/main.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/superplace-mlg-replay.dir/build.make CMakeFiles/superplace-mlg-replay.dir/tools/mlg_replay/main.cpp.s
+.PHONY : tools/mlg_replay/main.cpp.s
+
 tools/quiz/main.o: tools/quiz/main.cpp.o
 .PHONY : tools/quiz/main.o
 
@@ -980,6 +1017,7 @@ help:
 	@echo "... test"
 	@echo "... superplace"
 	@echo "... superplace-cli"
+	@echo "... superplace-mlg-replay"
 	@echo "... superplace-quiz"
 	@echo "... test_b2b"
 	@echo "... test_csr"
@@ -1071,6 +1109,9 @@ help:
 	@echo "... src/util/metrics.o"
 	@echo "... src/util/metrics.i"
 	@echo "... src/util/metrics.s"
+	@echo "... tools/mlg_replay/main.o"
+	@echo "... tools/mlg_replay/main.i"
+	@echo "... tools/mlg_replay/main.s"
 	@echo "... tools/quiz/main.o"
 	@echo "... tools/quiz/main.i"
 	@echo "... tools/quiz/main.s"

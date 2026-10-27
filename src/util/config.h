@@ -70,7 +70,9 @@ struct Config {
     float target_density    = 1.0f;
     float target_overflow   = 0.10f;   ///< mGP 停止阈值 τ
     float cgp_target_overflow = 0.07f; ///< cGP 停止阈值（比 mGP 更严）
-    int   gp_max_iter       = 1000;
+    /// 停滞保护会让停滞的设计提前收手，上限只约束仍在稳步下降的设计。
+    /// 官方 MMS bigblue4 的 λ 前 250 轮几乎不涨，1000 轮时 τ 还在 0.27 往下走，第 1254 轮达标。
+    int   gp_max_iter       = 2000;
     int   ignore_net_degree = 100;
     /// bin 网格维度；0 表示按 05 §5.5.3 自动推算（2 的幂，上限 1024）
     int   gp_bin_dim        = 0;
@@ -85,12 +87,16 @@ struct Config {
     float delta_hpwl_ref    = 3.5e5f;
     /// Nesterov 是否启用 Barzilai-Borwein 步长
     bool  use_bb            = true;
+    /// Nesterov 每步试走后校验步长，超过目的点的 1/L 就退回重走
+    bool  gp_backtrack      = true;
     /// FILLERONLY 阶段的固定轮数
     int   filler_only_iters = 20;
     /// τ 连续多少轮没有改善就判定停滞并停止（<=0 关闭）。
     /// λ 调度是 ΔHPWL 的速率控制器，本身没有"τ 不动就收手"这一项，
     /// 密排混合尺寸设计上会出现 τ 锁死而 HPWL 无限膨胀的空转。
     int   gp_stagnation_window = 200;
+    /// 窗口内 τ 至少要相对改善多少才算"有进展"
+    float gp_stagnation_min_gain = 0.02f;
 
     // -------------------------------------------------- 宏单元合法化 mLG（M3）
     /// SA 移动次数；0 表示按宏数量自动推算（每宏 3000 次，下限 2 万）

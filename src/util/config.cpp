@@ -85,6 +85,8 @@ void Config::loadJson(const std::string& path) {
     get("density_chunks", density_chunks);
     get("delta_hpwl_ref", delta_hpwl_ref);
     get("use_bb", use_bb);
+    get("gp_backtrack", gp_backtrack);
+    get("gp_stagnation_min_gain", gp_stagnation_min_gain);
     get("filler_only_iters", filler_only_iters);
     get("gp_stagnation_window", gp_stagnation_window);
     get("macro_sa_moves", macro_sa_moves);

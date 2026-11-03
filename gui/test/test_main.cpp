@@ -23,6 +23,11 @@ void testPrefetch();
 void testPrefetchShutdown();
 void testPrefetchLRU();
 void testDensityReference();
+void testDrawValidPolicy();
+void testDensityCache();
+void testDensityCacheBudget();
+void testDensityCacheFault();
+void testDensityCacheLifetime();
 
 int main() {
     testCamera();
@@ -47,6 +52,11 @@ int main() {
     testPrefetchShutdown();
     testPrefetchLRU();
     testDensityReference();
+    testDrawValidPolicy();
+    testDensityCache();
+    testDensityCacheBudget();
+    testDensityCacheFault();
+    testDensityCacheLifetime();
 
     std::printf("viz_tests: %d 项检查, %d 失败\n", ::viztest::checks(),
                 ::viztest::failures());

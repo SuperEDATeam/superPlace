@@ -7,9 +7,13 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <atomic>
+#include <thread>
+#include <mutex>
 
 #include "render/canvas.h"
 #include "viz/density.h"
+#include "viz/density_cache.h"
 #include "viz/frame_map.h"
 #include "viz/playback.h"
 #include "viz/spatial_index.h"
@@ -72,6 +76,7 @@ private:
     void rebuildIndexIfDirty();
     // ---- T6：懒重建密度场
     void rebuildDensityIfDirty();
+    void startPreDensity();          ///< setSource 后起后台线程预计算各关键帧密度
     bool statsSource(const float** sx, const float** sy);
     // ---- T7/T8：按当前着色模式算连续属性值并上传
     void updateContinuousValues();
@@ -143,6 +148,18 @@ private:
     float densityCacheMax_ = 0.f;
     int  lastSyncLo_ = -1, lastSyncHi_ = -1;
     double lastSyncAlpha_ = -1.0;
+    // 性能剖析（ms/帧）：密度构建/插值/上传/索引/画布绘制
+    double profDensity_ = 0.0, profInterp_ = 0.0, profUpload_ = 0.0;
+    double profIndex_ = 0.0, profDraw_ = 0.0;
+    double profFrame_ = 0.0, profLerp_ = 0.0;
+    // 关键帧密度后台预计算（128x128 ≈64KB/帧）：消除播放中每帧 O(n) 重建。
+    viz::DensityCache preDensityCache_;
+    // 同步时跳过 GL 上传（LOD 且播放）置位；近景绘制前若为脏则补传当前位置。
+    bool gpuPositionsDirty_ = false;
+    bool positionsValid_ = false;   ///< 本帧 frame() 成功 materialize；false 时近景不画旧 buffer
+    const float* lastPx_ = nullptr;
+    const float* lastPy_ = nullptr;
+    int lastN_ = 0;
     unsigned long lastHmGen_ = 0;  ///< 已上传纹理对应的密度场版本，避免每帧重复上传
     bool heatmapOverlay_ = true;   ///< 近景是否叠加半透明热力图
     bool lodAuto_ = true;          ///< 远景自动切热力图

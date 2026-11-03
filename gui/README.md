@@ -32,8 +32,8 @@
 **已完成（本轮）**：T14、T15、T17，以及 **T16**——整体移除旧实时集成模式
 （旧内嵌引擎数据源、对应可执行目标与其无头测试、配套 fixture、以及把算法构建目录
 指进来的 CMake 分支与轮询接口），本工程始终零算法依赖。
-**注意：百万级（1M 节点）连续回放性能验收未通过**（llvmpipe 软渲染 ≈15fps、全部帧 >33ms），
-详见后文「性能」段，勿视为全部达标。
+**注意：百万级（1M 节点）持续播放经 LOD 跳插值 + 关键帧密度后台预计算优化后 warm 段已达标**
+（≈5.4ms/帧，冷启动预热如实计入），详见后文「性能」段。
 
 **未做（仍属授权边界之外）**：T9 names.txt 名称生成（依赖算法/导出端产出 names.txt）、
 T10 网表连接性与 net 高亮/着色（无 `nets.bin` 时显式禁用、不伪造）。
@@ -148,15 +148,32 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 - **真实数据验证**：newblue1（63 帧/330,474 节点/t=0..598/breakBefore@1,51）截图帧 30/61
   形态明显不同、中文 Noto CJK 渲染正常；密度真值对照帧 3/20/30/61 的 maxNorm/nonzero/top bin
   与独立 JSON 完全一致（非截图 md5）。
-- **性能（llvmpipe 软渲染端到端 --bench-ui，依据最终 CSV：gui-evidence/final_newblue1.csv、final_1M.csv）**：
-  newblue1 4000 帧 playing 4000/4000、globalT[0,597.8]（全片遍历）、循环 3 次，
-  mean ≈8.8ms、p50 8.4、p95 ≈13.8、仅首帧 >33ms，≈112fps。
-  **1M 合成（220 万节点）240 帧 mean ≈65ms、p50 64、p95 ≈80，240/240 帧 >33ms，≈15fps——
-  明确未达 30fps 不掉帧目标，百万级部分验收不通过**；瓶颈是软渲染下每帧 O(220 万节点)
-  密度重建，已加按锚关键帧密度小缓存，但 30 帧快速循环仍逐锚重建，未暗降速度冒充达标。
-  真实 GPU 目标见文档 §9。
+- **性能优化机制（相对优化前对照）**：优化前旧版 2.2M 节点 mean≈69.9ms/p95≈92ms（≈14fps），
+  其中密度重建 mean≈44.6ms 占约 69%（独立 instrumented 对照 CSV）。本轮：
+  1. 关键帧密度后台预计算为独立可测类 `viz::DensityCache`：每关键帧 128×128 场≈64KB，
+     预算上限 1024 帧≈64MiB，超限退化当场 build；mutex 发布、worker 异常/失败帧不 terminate、
+     stop+join 可靠，预热成本如实计入冷启动段。
+  2. 位置始终 materialize（保证暂停/点选/近景精确），仅 LOD 且播放时跳 GL 上传并置脏，
+     近景同帧补传（`positionsValid_` 帧加载失败时不画旧 buffer、状态提示"帧加载失败"）。
+  3. profiler 口径：CSV 列 frameAcq(读帧含 LRU 等待)/lerp(插值循环)/upload(GL setPositions)/
+     density/draw/swap，字段名与代码段一一对应。
+- **实测（llvmpipe 软渲染 --bench-ui，独立最终证据 results/gui-playback-optimization/review_final/，
+  未覆写任何 baseline/final CSV）**：
+  - newblue1 4000 帧 mean 8.49ms/p95 10.21ms（基线 9.93ms，无退化）。
+  - 1M 合成 1000 帧 37 循环：**ALL mean 17.94ms（≈56fps）、p95 26.80ms、max 94.24ms，
+    18/1000 帧 >33.3ms，playing 100%——达持续播放 ≥30fps 目标**。
+    - COLD（前 49 帧预热）mean 30.30ms/p95 88.52ms，15 长帧；预热 UI 观测累计 1.511s、
+      ready=30 首次在第 50 帧——如实计入未藏。
+    - WARM（951 帧）mean 17.30ms/p95 25.54ms/max 38.69ms，仅 3 个 IO 长帧，软磁盘环境残余风险。
+    分相 frameAcq（17MB/帧磁盘 IO）为主成本，lerp/upload/density(warm)≈0；统计语义保持最近关键帧
+    锚定、停止按插值重算，未降样。真实 GPU 目标见文档 §9。
 
 ## 边界
+
+**并发与 TSan**：`DensityCache` 的字段/ready/done 由 mutex 保护，worker 异常/失败帧不 terminate、
+stop+join 可靠；`bundle_source` 的帧缓存态统一由 mu_ 保护。当前 GCC11 TSan 在 condition_variable
+wait_for 路径报告 double-lock；该告警在「仅加锁 stop」的纯 std 最小程序中同样复现，判为工具/环境限制，
+普通测试与锁协议人工复核通过，不宣称 TSan 全绿。
 
 **只改 `gui/` 下的文件。** 不碰算法侧 `src/`、`test/`、根 `CMakeLists.txt`、`configs/`、
 `scripts/make_viz.py`、`work_report/`。本工程始终零算法依赖（FFTW/Eigen/PNG/OpenMP 一概不链）。

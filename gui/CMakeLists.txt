@@ -90,6 +90,7 @@ add_library(viz_core STATIC
   src/viz/summary.cpp
   src/viz/spatial_index.cpp
   src/viz/density.cpp
+  src/viz/density_cache.cpp
   src/viz/frame_map.cpp
   src/viz/playback.cpp
   src/render/gl_loader.cpp
@@ -117,10 +118,12 @@ add_executable(viz_tests
   test/test_playback.cpp
   test/test_prefetch.cpp
   test/test_density_ref.cpp
+  test/test_density_cache.cpp
   src/viz/bundle_source.cpp
   src/viz/summary.cpp
   src/viz/spatial_index.cpp
   src/viz/density.cpp
+  src/viz/density_cache.cpp
   src/viz/frame_map.cpp
   src/viz/playback.cpp
 )

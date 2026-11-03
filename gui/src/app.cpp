@@ -134,6 +134,8 @@ App::App(AppOptions opt) : opt_(std::move(opt)) {
 }
 
 App::~App() {
+    preDensityCache_.stop();
+    preDensityCache_.join();
     if (window_) {
         canvas_.shutdown();
         ImGui_ImplOpenGL3_Shutdown();
@@ -146,6 +148,12 @@ App::~App() {
 }
 
 void App::setSource(std::unique_ptr<IPlacementSource> src) {
+    // 先停旧预计算 worker 并 join，再销毁/替换旧 src_，杜绝 worker 读已析构源的 UAF。
+    preDensityCache_.stop();
+    preDensityCache_.join();
+    gpuPositionsDirty_ = true;
+    positionsValid_ = false;
+    lastPx_ = nullptr; lastPy_ = nullptr; lastN_ = 0;
     src_ = std::move(src);
     needFit_ = true;
     geomUploaded_ = false;
@@ -188,6 +196,27 @@ void App::setSource(std::unique_ptr<IPlacementSource> src) {
     }
     // 真正的上传推迟到 uploadGeometry()，由主循环在上下文就绪后触发。
     uploadGeometry();
+    startPreDensity();
+}
+
+void App::startPreDensity() {
+    if (!src_) return;
+    const int nf = src_->frameCount();
+    // 预算：每关键帧场 128x128x4B=64KB，最多 1024 帧（≈64MiB）；超出不预计算，播放退化当场 build。
+    constexpr int kMaxPreDensityFrames = 1024;
+    // 捕获启动时稳定的源指针：setSource 已先 join 旧 worker 再换 src_，源生命周期覆盖本线程。
+    IPlacementSource* s = src_.get();
+    viz::DensityField df;
+    preDensityCache_.start(nf, kMaxPreDensityFrames, [s, df](int i) mutable {
+        FrameView fv;
+        viz::DensityFieldData out;
+        if (!s->frame(i, fv)) return out; // 失败帧 ok=false，调用方退化当场 build
+        df.build(s->scene().chip, fv.x, fv.y, s->geometry(), 128, 128);
+        out.data = df.field();
+        out.maxNorm = df.maxNorm();
+        out.ok = true;
+        return out;
+    });
 }
 
 void App::uploadGeometry() {
@@ -283,11 +312,20 @@ void App::syncPlayback() {
 
     const PlaybackController::DisplayState ds = playback_.state();
 
-    // ---- 渲染位置 ----
+    // ---- 位置 materialization：始终计算（供密度/点选/近景），仅 LOD且moving 时跳 canvas 上传。
     const float* px = nullptr;
     const float* py = nullptr;
+    const auto tAcq0 = std::chrono::steady_clock::now();
     if (ds.interpolating && ds.lo >= 0 && ds.hi >= 0) {
-        if (!src_->frame(ds.lo, fvLo_) || !src_->frame(ds.hi, fvHi_)) return;
+        if (!src_->frame(ds.lo, fvLo_) || !src_->frame(ds.hi, fvHi_)) { positionsValid_=false; lastPx_ = nullptr; lastPy_ = nullptr; lastN_ = 0; status_ = "帧加载失败"; return; }
+    } else {
+        const int k = ds.lo >= 0 ? ds.lo : 0;
+        if (!src_->frame(k, fvLo_)) { positionsValid_=false; lastPx_ = nullptr; lastPy_ = nullptr; lastN_ = 0; status_ = "帧加载失败"; return; }
+    }
+    const double acqMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - tAcq0).count();
+    const auto tLerp0 = std::chrono::steady_clock::now();
+    if (ds.interpolating && ds.lo >= 0 && ds.hi >= 0) {
         const float* aX = fvLo_.x; const float* aY = fvLo_.y;
         const float* bX = fvHi_.x; const float* bY = fvHi_.y;
         const float w = static_cast<float>(ds.alpha);
@@ -299,12 +337,25 @@ void App::syncPlayback() {
         px = interpX_.data();
         py = interpY_.data();
     } else {
-        const int k = ds.lo >= 0 ? ds.lo : 0;
-        if (!src_->frame(k, fvLo_)) return;
         px = fvLo_.x;
         py = fvLo_.y;
     }
-    canvas_.setPositions(px, py, n);
+    const double lerpMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - tLerp0).count();
+    const auto tUp0 = std::chrono::steady_clock::now();
+    const bool moving = playback_.playing() || scrubbingSlider_;
+    // 只上传一次：LOD且播放跳上传并置脏；其余情况立即上传并清脏。
+    lastPx_ = px; lastPy_ = py; lastN_ = n;
+    if (viz::shouldUploadPositions(true, lastPx_ && lastPy_, lodActive_ && moving)) {
+        canvas_.setPositions(px, py, n);
+        gpuPositionsDirty_ = false;
+    } else {
+        gpuPositionsDirty_ = true;
+    }
+    const double upMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - tUp0).count();
+    profFrame_ = acqMs; profLerp_ = lerpMs; profUpload_ = upMs;
+    positionsValid_ = true;
 
     // T17：按播放/拖动方向提示后台预读关键帧（不阻塞主循环）。
     // 播放前进；拖动时按 playhead 变化定方向；停下保持最近方向。
@@ -321,7 +372,6 @@ void App::syncPlayback() {
     src_->prefetch(ds.statFrame, pdir);
 
     // ---- 懒统计锚定 ----
-    const bool moving = playback_.playing() || scrubbingSlider_;
     if (moving) {
         if (ds.statFrame != statsKeyFrame_) {
             statsKeyFrame_ = ds.statFrame;
@@ -360,13 +410,17 @@ void App::rebuildIndexIfDirty() {
 
 void App::rebuildDensityIfDirty() {
     if (!densityDirty_ || !src_) return;
-    // T17 密度缓存：同一锚关键帧往返（快速循环/来回拖动）不重复 O(n) 重建。
-    if (statsKeyFrame_ >= 0 && statsKeyFrame_ == densityCacheKey_ && densityCacheOk_) {
-        density_.setField(densityCacheField_, densityCacheCols_, densityCacheRows_,
-                          densityCacheMax_);
+    const auto t0 = std::chrono::steady_clock::now();
+    // 优先用后台预计算好的关键帧密度场（128x128 ≈64KB），播放切换锚时零 O(n) 重建。
+    viz::DensityFieldData pre = preDensityCache_.get(statsKeyFrame_);
+    if (pre.ok && !pre.data.empty()) {
+        density_.setField(std::move(pre.data), 128, 128, pre.maxNorm);
         densityDirty_ = false;
+        profDensity_ = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - t0).count();
         return;
     }
+    // 冷启动：预计算尚未覆盖该锚帧，退化为当场 build（会随 worker 推进被覆盖）。
     const float* sx = nullptr; const float* sy = nullptr;
     if (statsSource(&sx, &sy)) {
         density_.build(src_->scene().chip, sx, sy, src_->geometry(), 128, 128);
@@ -378,6 +432,8 @@ void App::rebuildDensityIfDirty() {
         densityCacheOk_ = true;
         densityDirty_ = false;
     }
+    profDensity_ = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - t0).count();
 }
 
 void App::updateContinuousValues() {
@@ -525,13 +581,21 @@ int App::run() {
                 canvas_.drawHeatmapOverlay(cam_, vw, vh, src_->scene().chip, alpha);
             };
             if (lodActive_) {
-                uploadHm(0.9f);
+                if (viz::shouldDrawPositions(positionsValid_)) uploadHm(0.9f);
             } else {
-                if (heatmapOverlay_) uploadHm(0.28f);
-                canvas_.draw(cam_, vw, vh);
+                if (gpuPositionsDirty_ &&
+                    viz::shouldUploadPositions(positionsValid_, lastPx_ && lastPy_, false)) {
+                    canvas_.setPositions(lastPx_, lastPy_, lastN_);
+                    gpuPositionsDirty_ = false;
+                }
+                if (viz::shouldDrawPositions(positionsValid_)) {
+                    if (heatmapOverlay_) uploadHm(0.28f);
+                    canvas_.draw(cam_, vw, vh);
+                }
             }
             drawMs_ = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - t0).count();
+            profDraw_ = drawMs_;
             glViewport(0, 0, fbW, fbH);
         }
 
@@ -570,8 +634,13 @@ int App::run() {
             benchUiPrevVt_ = ds.vt;
             benchCsv_ += std::to_string(benchUiTimes_.size()) + ","
                         + std::to_string(renderMs) + "," + std::to_string(swapMs) + ","
+                        + std::to_string(profFrame_) + "," + std::to_string(profLerp_) + ","
+                        + std::to_string(profUpload_) + "," + std::to_string(profDensity_) + ","
+                        + std::to_string(profDraw_) + ","
                         + std::to_string(ds.globalT) + "," + std::to_string(ds.lo) + ","
                         + std::to_string(ds.hi) + "," + std::to_string(ds.alpha) + ","
+                        + std::to_string(statsKeyFrame_) + "," + (lodActive_ ? "1" : "0") + ","
+                        + std::to_string(preDensityCache_.ready()) + ","
                         + (playback_.playing() ? "1" : "0") + "\n";
             if (static_cast<int>(benchUiTimes_.size()) >= opt_.benchUiFrames) {
                 auto v = benchUiTimes_;
@@ -595,7 +664,7 @@ int App::run() {
                             swapSum / sz);
                 if (!benchCsvPath_.empty()) {
                     std::ofstream cf(benchCsvPath_);
-                    cf << "frame,render_ms,swap_ms,globalT,lo,hi,alpha,playing\n" << benchCsv_;
+                    cf << "frame,render_ms,swap_ms,frameAcq_ms,lerp_ms,upload_ms,density_ms,draw_ms,globalT,lo,hi,alpha,anchor,lod,preReady,playing\n" << benchCsv_;
                     std::printf("[bench-ui] CSV 已写 %s\n", benchCsvPath_.c_str());
                 }
                 if (!opt_.screenshot.empty()) saveScreenshot(opt_.screenshot, fbW, fbH);

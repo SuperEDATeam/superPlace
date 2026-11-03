@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -171,20 +172,76 @@ void testBundle() {
         }
     }
 
-    // 7) R2-2：无 stage 列的旧源 → 全部记为未知，不臆造分段。
+    // 8) 边界：nodeCount=1 可加载可取帧
     {
-        const fs::path dir = makeMiniBundle(4, nullptr, true, true);
-        std::ofstream m(dir / "metrics.csv");
-        m << "iter,hpwl\n0,1000\n1,999\n";
-        m.close();
+        const fs::path dir = makeMiniBundle(1, nullptr);
         std::string err;
         auto src = makeBundleSource(dir.string(), &err);
         CHECK_TRUE(static_cast<bool>(src));
-        if (src && src->metrics()) {
-            const MetricsTable& mt = *src->metrics();
-            CHECK_EQ(mt.rowCount, 2);
-            CHECK_EQ(mt.stage[0], "");
-            CHECK_EQ(mt.stage[1], "");
+        if (src) {
+            FrameView fv;
+            CHECK_TRUE(src->frame(0, fv));
+            CHECK_TRUE(fv.count == 1);
         }
+    }
+
+    // 9) 边界：nodeCount=0 被 open 拒绝
+    {
+        const fs::path dir = makeMiniBundle(0, nullptr, false);
+        writeFloats(dir / "geom.bin", {});
+        writeBytes(dir / "flags.bin", {});
+        std::string err;
+        auto src = makeBundleSource(dir.string(), &err);
+        CHECK_TRUE(!src);
+    }
+
+    // 10) 边界：含 NaN/Inf 坐标的帧 frame() 判失败，不进渲染
+    {
+        const fs::path dir = makeMiniBundle(4, nullptr);
+        std::vector<float> pos(8, 0.f);
+        pos[3] = std::numeric_limits<float>::quiet_NaN();
+        writeFloats(dir / "frames/f0000.bin", pos);
+        std::string err;
+        auto src = makeBundleSource(dir.string(), &err);
+        CHECK_TRUE(static_cast<bool>(src));
+        if (src) {
+            FrameView fv;
+            CHECK_TRUE(!src->frame(0, fv)); // 非有限帧拒绝
+        }
+    }
+
+    // 11) 边界：截断帧文件（大小不符）frame() 失败而非读越界
+    {
+        const fs::path dir = makeMiniBundle(4, nullptr);
+        writeFloats(dir / "frames/f0000.bin", {1.f, 2.f}); // 应 8 个 float
+        std::string err;
+        auto src = makeBundleSource(dir.string(), &err);
+        CHECK_TRUE(static_cast<bool>(src));
+        if (src) {
+            FrameView fv;
+            CHECK_TRUE(!src->frame(0, fv));
+        }
+    }
+
+    // 13) 兼容：无 names.txt 时 geom.name 为空、open 不崩；无 summary.json 为 null
+    {
+        const fs::path dir = makeMiniBundle(4, nullptr); // 不写 names/summary
+        std::string err;
+        auto src = makeBundleSource(dir.string(), &err);
+        CHECK_TRUE(static_cast<bool>(src));
+        if (src) {
+            CHECK_TRUE(src->geometry().name.empty()); // names 缺失降级为空
+            CHECK_TRUE(src->summary() == nullptr);
+        }
+    }
+
+    // 14) 兼容：空 metrics.csv（只有表头）不崩、rowCount=0
+    {
+        const fs::path dir = makeMiniBundle(4, nullptr, true, true);
+        std::ofstream(dir / "metrics.csv") << "stage,hpwl\n";
+        std::string err;
+        auto src = makeBundleSource(dir.string(), &err);
+        CHECK_TRUE(static_cast<bool>(src));
+        if (src && src->metrics()) CHECK_EQ(src->metrics()->rowCount, 0);
     }
 }

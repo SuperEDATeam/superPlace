@@ -38,7 +38,7 @@ struct AppOptions {
     /// >0 时：正常跑交互循环，到点自动截图并退出。
     /// 实时模式下用来出图与做自动化验证——bench 模式会立刻退出，等不到引擎产出帧。
     double autoShotAfterSec = 0.0;
-    int  startFrame = 0;           ///< 启动时跳到第几帧，-1 表示最后一帧
+    int  startFrame = -999;         ///< 启动跳帧；-999 未设置，-1 最后一帧
     /// 自检用：启动即开启两帧对比（A=0, B=最后一帧），便于无交互截图验证 T8。
     bool compareOn = false;
 };

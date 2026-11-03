@@ -18,6 +18,8 @@ void testScale();
 void testFrameViewLifetime();
 void testPlayback();
 void testPlaybackDegrade();
+void testPlaybackDuplicateT();
+void testPlaybackZeroT();
 void testPlaybackFixes();
 void testPrefetch();
 void testPrefetchShutdown();
@@ -47,6 +49,8 @@ int main() {
     testFrameViewLifetime();
     testPlayback();
     testPlaybackDegrade();
+    testPlaybackDuplicateT();
+    testPlaybackZeroT();
     testPlaybackFixes();
     testPrefetch();
     testPrefetchShutdown();

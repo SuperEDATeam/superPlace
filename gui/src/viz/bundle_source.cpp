@@ -318,6 +318,13 @@ private:
             std::fprintf(stderr, "[viz] %s\n", err.c_str());
             return nullptr;
         }
+        // 防御：非有限坐标在 GL 渲染未定义，整帧判为失败（不改 bundle 格式契约）。
+        for (size_t i = 0; i < n * 2; ++i) {
+            if (!std::isfinite((*buf)[i])) {
+                std::fprintf(stderr, "[viz] %s 含非有限坐标，拒绝该帧\n", file.c_str());
+                return nullptr;
+            }
+        }
         return buf;
     }
 

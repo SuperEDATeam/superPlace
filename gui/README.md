@@ -2,9 +2,9 @@
 
 基于 Dear ImGui + GLFW + OpenGL 的交互式布局查看器。
 
-**与算法部分零耦合**：这是一个独立的顶层 CMake 工程，根目录的 `CMakeLists.txt`
-不引用它。依赖方向单向——gui 可以（可选地）去找 `libsuperplace`，
-算法侧永远不知道 gui 存在。因此在这里做任何改动都不可能让算法侧构建或测试失败。
+**与算法部分零耦合**：这是一个独立的顶层 CMake 工程。根 `CMakeLists.txt` 字面仍存在
+`option(ENABLE_GUI ... OFF)`（9b5d3d9 已有、非本轮引入），但无 `add_subdirectory(gui)`，
+算法默认/当前构建不纳入 gui；依赖方向单向——gui 不依赖算法侧库，算法侧构建/测试不引用 gui。
 
 > 完整设计说明、数据契约规范、已踩过的坑与开发路线见
 > [work_report/06-前端开发方案与接口契约.md](../work_report/06-前端开发方案与接口契约.md)。
@@ -139,13 +139,13 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 
 ## 实现状态 vs 验收状态（分开陈述）
 
-- **已实现并有自动证据**：T1、T3–T8、T13、T14、T15、T16、T17；无头单测 **590 项 0 失败**
-  （设 `VIZ_REF_BUNDLE`/`VIZ_REF_JSON` 带密度真值时 **606 项 0 失败**）、
-  ctest 1/1 通过；干净目录重建（删 build 后重新 configure）成功。
+- **已实现并有自动证据**：T1、T3–T8、T13、T14、T15、T16、T17；无头单测 **1164 项 0 失败**
+  （设 `VIZ_REF_BUNDLE`/`VIZ_REF_JSON` 带密度真值时 **1180 项 0 失败**）、
+  ctest 1/1 通过；干净 Release 目录重建（删 build_precommit_dev 后重新 configure）成功。
 - **T15 红测**：旧实现取第 3 帧后再取 26 帧挤出 24 帧 LRU，断言原数据逐位不变——
   旧实现失败（读出 `25000+i` 而非 `3000+i`，证明缓冲被别帧复用）；修复后 0 失败。
   红测源码在 `gui/test/test_frameview_lifetime.cpp`。
-- **真实数据验证**：newblue1（63 帧/330,474 节点/t=0..598/breakBefore@1,51）截图帧 30/61
+- **真实数据验证**：newblue1（63 帧 index 0..62/330,474 节点/t=0..598/breakBefore@1,51）截图帧 30/末帧62
   形态明显不同、中文 Noto CJK 渲染正常；密度真值对照帧 3/20/30/61 的 maxNorm/nonzero/top bin
   与独立 JSON 完全一致（非截图 md5）。
 - **性能优化机制（相对优化前对照）**：优化前旧版 2.2M 节点 mean≈69.9ms/p95≈92ms（≈14fps），
@@ -160,13 +160,11 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 - **实测（llvmpipe 软渲染 --bench-ui，独立最终证据 results/gui-playback-optimization/review_final/，
   未覆写任何 baseline/final CSV）**：
   - newblue1 4000 帧 mean 8.49ms/p95 10.21ms（基线 9.93ms，无退化）。
-  - 1M 合成 1000 帧 37 循环：**ALL mean 17.94ms（≈56fps）、p95 26.80ms、max 94.24ms，
-    18/1000 帧 >33.3ms，playing 100%——达持续播放 ≥30fps 目标**。
-    - COLD（前 49 帧预热）mean 30.30ms/p95 88.52ms，15 长帧；预热 UI 观测累计 1.511s、
-      ready=30 首次在第 50 帧——如实计入未藏。
-    - WARM（951 帧）mean 17.30ms/p95 25.54ms/max 38.69ms，仅 3 个 IO 长帧，软磁盘环境残余风险。
-    分相 frameAcq（17MB/帧磁盘 IO）为主成本，lerp/upload/density(warm)≈0；统计语义保持最近关键帧
-    锚定、停止按插值重算，未降样。真实 GPU 目标见文档 §9。
+  - 1M 合成 1000 帧 37 循环（fa1f839 基线）：ALL mean 17.94ms（≈56fps）、p95 26.80ms、
+    playing 100%，达持续播放 ≥30fps；COLD/WARM 与预热 1.511s 如实计入。
+  - **加 finite 坐标校验后单轮**（正确性优先，不再架构优化）：ALL mean 23.11ms（≈43fps，仍达硬目标）、
+    p95 35.99ms 略超；COLD 381 帧 mean 28.04/p95 42.35；WARM 619 帧 mean 20.07/p95 30.95（<33）。
+    回退原因：finite 全帧首扫 + worker 预热/磁盘 IO 竞争，属软环境 IO 瓶颈，非算法回归；保留正确性校验。
 
 ## 边界
 
@@ -174,6 +172,12 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 stop+join 可靠；`bundle_source` 的帧缓存态统一由 mu_ 保护。当前 GCC11 TSan 在 condition_variable
 wait_for 路径报告 double-lock；该告警在「仅加锁 stop」的纯 std 最小程序中同样复现，判为工具/环境限制，
 普通测试与锁协议人工复核通过，不宣称 TSan 全绿。
+
+**边界防御（无头测试覆盖）**：nodeCount=1 可加载、nodeCount=0 被 open 拒绝；geom/flags 大小不符、
+缺 geom.bin、缺/截断帧文件均报错不崩；含 NaN/Inf 坐标的帧 `frame()` 返回失败（防御非有限值，不改
+bundle 格式契约）；`frameInfo()` 只读元数据不触发位置 IO；无 names.txt 时 geom.name 空、无 summary
+为 null、空 metrics.csv（仅表头）rowCount=0 不崩；重复 t 同 arrival pinIndex 逐帧可达。clean Release
+`-Wall -Wextra` 自有及第三方头 0 warning；算法侧 clean Release 13/13。
 
 **只改 `gui/` 下的文件。** 不碰算法侧 `src/`、`test/`、根 `CMakeLists.txt`、`configs/`、
 `scripts/make_viz.py`、`work_report/`。本工程始终零算法依赖（FFTW/Eigen/PNG/OpenMP 一概不链）。

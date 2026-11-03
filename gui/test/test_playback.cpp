@@ -221,3 +221,31 @@ void testPlaybackDegrade() {
     CHECK_TRUE(s.interpolating);
     CHECK_TRUE(s.lo >= 0 && s.lo < 5);
 }
+
+// 边界：重复 t（同 arrival）帧必须显式 pin index 才能逐帧导航，不能用 epsilon 混淆。
+void testPlaybackDuplicateT() {
+    std::vector<FrameMeta> fr;
+    for (int i = 0; i < 3; ++i) fr.push_back(mk(i, "a", -2, 0.0, false)); // 全 t=0
+    PlaybackController pc;
+    pc.setSpeed(60.0);
+    pc.setFrames(fr);
+    CHECK_TRUE(pc.totalDuration() > 0.0); // 同 arrival 帧各自里程碑 dwell，总时长>0
+    pc.play();
+    // 逐帧 pin 应能到达每个 index，而不是全部跳到同一 arrival
+    pc.pinIndex(0); CHECK_EQ(pc.state().lo, 0);
+    pc.pinIndex(1); CHECK_EQ(pc.state().lo, 1);
+    pc.pinIndex(2); CHECK_EQ(pc.state().lo, 2);
+}
+
+// 边界：全 0 iter / 缺 t 退化为帧序均匀分布，不崩。
+void testPlaybackZeroT() {
+    std::vector<FrameMeta> fr;
+    for (int i = 0; i < 4; ++i) fr.push_back(mk(i, "a", 0, 0.0, false));
+    PlaybackController pc;
+    pc.setSpeed(60.0);
+    pc.setFrames(fr);
+    CHECK_TRUE(pc.totalDuration() > 0.0);
+    pc.scrubTo(pc.totalDuration() * 0.5);
+    PlaybackController::DisplayState s = pc.state();
+    CHECK_TRUE(s.lo >= 0 && s.lo < 4);
+}

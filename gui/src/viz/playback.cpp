@@ -153,7 +153,6 @@ void PlaybackController::nextKeyframe() {
 
 void PlaybackController::prevKeyframe() {
     if (meta_.empty()) return;
-    const int n = static_cast<int>(meta_.size());
     const DisplayState ds = state();
     int target;
     if (ds.interpolating && ds.alpha > 1e-6) target = ds.lo;   // 插值中段回到段起点

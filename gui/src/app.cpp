@@ -515,8 +515,9 @@ int App::run() {
         loopOn_ = true;
         if (src_) { playback_.setLoop(true); playback_.play(); }
     }
-    if (src_ && opt_.startFrame != 0)
+    if (src_ && opt_.startFrame != -999) {
         gotoFrame(opt_.startFrame < 0 ? src_->frameCount() - 1 : opt_.startFrame);
+    }
     if (src_ && opt_.compareOn && src_->frameCount() >= 2) {
         compareOn_ = true;
         frameB_ = src_->frameCount() - 1;

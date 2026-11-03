@@ -1,18 +1,28 @@
-
-# vendor 它们的目的就是让队友 clone 后无需任何 apt 操作即可编译（05 §2.2）。
-# 参考实现 easyPlace 已移至 ~/easyPlace（项目目录之外）
-# 大规模 benchmark（体积大，见 work_report/04）
-# 构建与运行产物
-# 此条保留作为护栏，防止日后误将其放回项目内
 # 注意：third_party/ 下的 CImg.h 与 nlohmann/json.hpp 是【有意提交】的。
+# vendor 它们的目的就是让队友 clone 后无需任何 apt 操作即可编译（05 §2.2）。
+
+# 参考实现 easyPlace 已移至 ~/easyPlace（项目目录之外）。
+# 此条保留作为护栏，防止日后误将其放回项目内。
 baseline_/
-# benchmarks 的数据体积 5 GB 不进 git，但保留 README（说明该下载什么、从哪下）。
-# 必须写成 benchmarks/* 而不是 benchmarks/——后者会让 git 根本不进入该目录，
-# 否定规则 !benchmarks/README.md 就不会生效。
+
+# 大规模 benchmark（体积大，见 work_report/04）。数据约 5 GB 不进 git，但保留 README
+# （说明该下载什么、从哪下）。必须写成 benchmarks/* 而不是 benchmarks/——后者会让
+# git 根本不进入该目录，否定规则 !benchmarks/README.md 就不会生效。
 benchmarks/*
 !benchmarks/README.md
+
+# 测试数据：只入库单元测试必需的部分。thin1（208 KB）原样入库；adaptec1（40 MB）以
+# adaptec1.tar.xz（2.9 MB）入库，由 test/CMakeLists.txt 在配置时解压到 test_data/adaptec1/。
+# adaptec4 没有测试用到，不入库。写成 test_data/* 的理由同上。
+test_data/*
+!test_data/thin1/
+!test_data/adaptec1.tar.xz
+
+# 构建与运行产物。build_*/ 覆盖 build_clean 之类的额外构建目录——
+# 它曾被误提交过 280 个文件（含 .a 与可执行文件）。
 build/
+build_*/
 compile_commands.json
-pdf/
 results/
-test_data/
+
+pdf/

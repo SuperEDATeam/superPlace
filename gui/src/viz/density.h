@@ -30,6 +30,11 @@ public:
     /// 每次 build() 自增，供调用方判断场是否刷新过（避免每帧重复上传纹理）。
     unsigned long generation() const { return generation_; }
 
+    /// T17 密度缓存回放：直接恢复已构建好的场（用于锚帧往返避免 O(n) 重建）。
+    void setField(std::vector<float> f, int cols, int rows, float maxNorm) {
+        norm_ = std::move(f); cols_ = cols; rows_ = rows; maxNorm_ = maxNorm; ++generation_;
+    }
+
     /// 采样某世界坐标处的归一化密度（越界返回 0）。
     float sample(float wx, float wy) const;
 

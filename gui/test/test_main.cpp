@@ -15,6 +15,14 @@ void testFrameMapRowIterBoundaries();
 void testFrameMapIllegalNoFallback();
 void testFrameMapApproxSkipsIllegal();
 void testScale();
+void testFrameViewLifetime();
+void testPlayback();
+void testPlaybackDegrade();
+void testPlaybackFixes();
+void testPrefetch();
+void testPrefetchShutdown();
+void testPrefetchLRU();
+void testDensityReference();
 
 int main() {
     testCamera();
@@ -31,6 +39,14 @@ int main() {
     testFrameMapIllegalNoFallback();
     testFrameMapApproxSkipsIllegal();
     testScale();
+    testFrameViewLifetime();
+    testPlayback();
+    testPlaybackDegrade();
+    testPlaybackFixes();
+    testPrefetch();
+    testPrefetchShutdown();
+    testPrefetchLRU();
+    testDensityReference();
 
     std::printf("viz_tests: %d 项检查, %d 失败\n", ::viztest::checks(),
                 ::viztest::failures());

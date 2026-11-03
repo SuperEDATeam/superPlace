@@ -36,6 +36,14 @@ int main(int argc, char** argv) {
             opt.benchFrames = std::atoi(argv[++i]);
             continue;
         }
+        if (a == "--bench-ui" && i + 1 < argc) {
+            opt.benchUiFrames = std::atoi(argv[++i]);
+            continue;
+        }
+        if (a == "--bench-csv" && i + 1 < argc) {
+            opt.benchCsvPath = argv[++i];
+            continue;
+        }
         if (a == "--screenshot" && i + 1 < argc) {
             opt.screenshot = argv[++i];
             continue;

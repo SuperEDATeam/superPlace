@@ -1,7 +1,7 @@
 // 查看器主程序。
 //
 // App 不知道数据从哪来——它只持有一个 IPlacementSource。
-// 独立版注入 BundleSource，集成版注入 LiveSource，UI 代码完全相同。
+// App —— 前端总装。注入 BundleSource，UI 代码与数据源解耦。
 #pragma once
 
 #include <memory>
@@ -11,6 +11,7 @@
 #include "render/canvas.h"
 #include "viz/density.h"
 #include "viz/frame_map.h"
+#include "viz/playback.h"
 #include "viz/spatial_index.h"
 #include "viz/source.h"
 
@@ -25,6 +26,10 @@ struct AppOptions {
     /// >0 时进入基准模式：渲染这么多帧、报告耗时、退出，不进交互循环。
     /// 既用于量化回归，也让"33 万单元够不够快"这种问题有实测答案而不是猜。
     int  benchFrames = 0;
+    /// >0 时进入真实 UI 端到端基准：跑完整 drawUi（含 ImGui/LOD/热图）这么多帧，
+    /// 报告每帧总耗时 p50/p95/fps 与 LOD 状态——区别于 runBench 的纯矩形微基准。
+    int  benchUiFrames = 0;
+    std::string benchCsvPath;
     std::string screenshot;        ///< 非空则把最后一帧存成 PPM
     /// >0 时：正常跑交互循环，到点自动截图并退出。
     /// 实时模式下用来出图与做自动化验证——bench 模式会立刻退出，等不到引擎产出帧。
@@ -42,7 +47,7 @@ public:
     App(const App&) = delete;
     App& operator=(const App&) = delete;
 
-    /// 注入数据源。集成版在这里塞 LiveSource。
+    /// 注入数据源（BundleSource）。
     void setSource(std::unique_ptr<IPlacementSource> src);
 
     /// 跑主循环直到窗口关闭。返回进程退出码。
@@ -57,6 +62,8 @@ private:
     void drawInspectPanel();
     void drawComparePanel();
     void gotoFrame(int index);
+    void gotoKeyframe(int index);
+    void syncPlayback();
     void uploadGeometry();
     int  runBench();
     void saveScreenshot(const std::string& path, int w, int h);
@@ -65,6 +72,7 @@ private:
     void rebuildIndexIfDirty();
     // ---- T6：懒重建密度场
     void rebuildDensityIfDirty();
+    bool statsSource(const float** sx, const float** sy);
     // ---- T7/T8：按当前着色模式算连续属性值并上传
     void updateContinuousValues();
 
@@ -74,16 +82,37 @@ private:
     Camera cam_;
     std::unique_ptr<IPlacementSource> src_;
 
-    int    frameIndex_ = 0;
-    bool   playing_ = false;
-    float  playFps_ = 12.f;
-    double lastAdvance_ = 0.0;
+    int    startKeyframe_ = 0;     ///< 启动时跳到的关键帧（--frame）
     bool   needFit_ = true;
     bool   glReady_ = false;      ///< GL 上下文是否已就绪
     bool   geomUploaded_ = false;
     std::string status_, bundlePath_;
     char pathBuf_[512] = {0};
-    FrameView cur_;
+
+    // ---- T14：连续回放（控制器 + 插值缓冲 + 持帧）
+    PlaybackController playback_;
+    std::vector<FrameMeta> metas_;
+    std::vector<float> interpX_, interpY_;   ///< CPU 线性插值位置（百万节点 < 1ms）
+    FrameView fvLo_, fvHi_;                  ///< 持住插值两端关键帧（shared_ptr 保活）
+    FrameView statsFv_;                      ///< 懒统计当前取的关键帧
+    int    statsKeyFrame_ = -1;              ///< 播放/拖动时懒统计锚定的关键帧
+    bool   statsFromInterp_ = false;         ///< 已停：统计按插值位置
+    double heatmapScale_ = 1.0;              ///< 热力图固定标尺（目标密度 1.0）
+    double lastFrameTime_ = 0.0;
+    bool   scrubbingSlider_ = false;
+    bool   loopOn_ = false;
+    int    prefetchDir_ = 1;          ///< T17：最近一次播放/拖动方向（停下保持）
+    double lastPlayhead_ = 0.0;
+    std::vector<double> benchUiTimes_;  ///< T14 端到端 UI 基准每帧耗时
+    std::vector<double> benchUiRender_; ///< 渲染段（不含交换）
+    std::vector<double> benchUiSwap_;   ///< 交换段
+    int    benchUiLodFrames_ = 0;
+    int    benchUiPlaying_ = 0, benchUiInterp_ = 0;
+    int    benchUiLoops_ = 0;
+    double benchUiTmin_ = 1e18, benchUiTmax_ = -1e18;
+    double benchUiPrevVt_ = -1.0;
+    std::string benchCsv_;
+    std::string benchCsvPath_;          ///< 非空则把每帧 t/ms/lo/hi/alpha/playing 写 CSV
 
     // 画布面板在窗口里的位置与尺寸（像素），交互与投影都要用
     float canvasX_ = 0, canvasY_ = 0, canvasW_ = 1, canvasH_ = 1;
@@ -107,6 +136,13 @@ private:
     // ---- T6：密度场 / 热力图 / LOD
     DensityField density_;
     bool densityDirty_ = true;
+    int  densityCacheKey_ = -1;
+    bool densityCacheOk_ = false;
+    std::vector<float> densityCacheField_;
+    int  densityCacheCols_ = 0, densityCacheRows_ = 0;
+    float densityCacheMax_ = 0.f;
+    int  lastSyncLo_ = -1, lastSyncHi_ = -1;
+    double lastSyncAlpha_ = -1.0;
     unsigned long lastHmGen_ = 0;  ///< 已上传纹理对应的密度场版本，避免每帧重复上传
     bool heatmapOverlay_ = true;   ///< 近景是否叠加半透明热力图
     bool lodAuto_ = true;          ///< 远景自动切热力图

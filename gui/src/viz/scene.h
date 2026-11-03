@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -57,16 +58,32 @@ struct NodeGeometry {
 
 /// 一帧的位置。**中心坐标**，不是左下角（与算法侧"铁律 2"一致）。
 ///
-/// 用指针而不是 vector：实时源每帧都在双缓冲里换，拷一份 330k×2 的 float
-/// 虽然只要几十微秒，但没必要；离线源直接指向自己的缓存。
+/// T15：数据所有权进契约。`data` 是整段 2N 浮点缓冲的 shared_ptr 引用计数
+/// 所有权，`x`/`y` 只是从它派生的裸指针。BundleSource 的 LRU 缓存淘汰时只
+/// 放掉缓存自己那份引用——任何还持有 `FrameView` 的地方（当前帧、T8 的两帧、
+/// 懒计算）数据都活着，悬垂问题整类消失，且零拷贝。
 struct FrameView {
+    /// 2N：前半 x[0..N-1]、后半 y[0..N-1]。空表示该帧无数据。
+    std::shared_ptr<const std::vector<float>> data;
     const float* x = nullptr;
     const float* y = nullptr;
     int          count = 0;
     int          index = 0;
     std::string  stage;   ///< input / init / mGP / FILLERONLY / cGP
     std::string  label;
-    bool valid() const { return x && y && count > 0; }
+    bool valid() const { return data && x && y && count > 0; }
+};
+
+/// 一帧的元数据（**不含位置**）。`IPlacementSource::frameInfo()` 只返回它，
+/// 绝不触发位置文件 I/O——T5 建映射、进度条刻度、T14 时间轴都只读它。
+/// 字段语义见 work_report/06 §3.2。
+struct FrameMeta {
+    int         index = -1;
+    std::string stage;
+    std::string label;
+    int         iter = -2;          ///< >=0 阶段内迭代号；-1 明确里程碑（停留）；-2 缺字段（普通帧）
+    double      t = 0.0;            ///< 全局进度（累计轮数），单调不减
+    bool        breakBefore = false; ///< 与上一帧硬切，不得插值
 };
 
 /// metrics.csv。列名动态，因为算法侧可能加列。

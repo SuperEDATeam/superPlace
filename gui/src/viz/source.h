@@ -1,21 +1,22 @@
 // IPlacementSource —— 前端与"数据从哪来"之间的唯一接缝。
 //
 // 这是整个低耦合设计的支点。UI 与渲染层**只认这个接口**，不知道背后是
-// 一堆文件还是一个正在跑的布局器。于是：
+// 一堆 bundle 文件。于是：
 //
-//   * 同伴日常开发只对着 BundleSource，连算法侧的头文件都不需要 include；
-//   * 将来接实时模式时新增一个 LiveSource，UI 代码一行都不用改；
-//   * 算法侧重构 PlaceDB 不会波及这里——波及的只有 LiveSource 那一个适配器。
+//   * 开发只对着 BundleSource，连算法侧的头文件都不需要 include；
+//   * 算法侧重构 bundle 落盘格式不会波及 UI——波及的只有 BundleSource 那一个适配器。
 //
-// 形式上这就是算法侧"决策 7 Backend Strategy"的同一套路：纯接口 + 工厂，
+// 形式上这就是"决策 7 Backend Strategy"的同一套路：纯接口 + 工厂，
 // 实现藏在各自的 .cpp 里。
+//
+// T16：实时集成模式已整体移除（旧内嵌引擎数据源与对应可执行目标已删除），
+// 本接口只服务离线 bundle，不再保留任何实时轮询接口。
 #pragma once
 
 #include <memory>
 #include <string>
 
 #include "viz/scene.h"
-
 namespace viz {
 
 class IPlacementSource {
@@ -29,18 +30,25 @@ public:
     virtual const NodeGeometry& geometry() const = 0;
     virtual const MetricsTable* metrics()  const = 0;   ///< 没有则返回 nullptr
     /// summary.json 总览（T1）。没有/解析失败返回 nullptr。
-    /// 默认实现返回 nullptr：LiveSource 不提供也无需改动本接口之外的代码。
     virtual const SummaryTable* summary() const { return nullptr; }
 
-    /// 可用帧数。实时源会随迭代推进不断变大。
+    /// 可用帧数。
     virtual int  frameCount() const = 0;
     virtual bool frame(int index, FrameView& out) = 0;
 
-    /// 实时源返回 true。UI 据此决定是否自动追帧、是否显示"运行中"状态。
-    virtual bool isLive() const { return false; }
+    /// 帧元数据（stage/iter/t/breakBefore/label），**不读位置文件**。
+    /// 越界返回 index=-1 的占位。T5 映射、进度条刻度、T14 时间轴一律用它，
+    /// 绝不为取标签而对每帧调 frame()（那会把位置也读进来挤掉缓存，即 T15 根因）。
+    virtual FrameMeta frameInfo(int index) const = 0;
 
-    /// 实时源用：有新帧时返回 true（UI 每帧轮询一次，不阻塞）。
-    virtual bool poll() { return false; }
+    /// T17：可测缓存条目数（单测断言 LRU 有界，非实时路径）；-1 表示不支持。
+    virtual int cachedFrameCount() const { return -1; }
+
+    /// bundle 是否带真实全局 t（§3.2）。false 时时间轴退化为按帧序号均匀分布。
+    virtual bool hasGlobalT() const { return false; }
+
+    /// T17：提示后台线程按播放方向预读 center 附近的关键帧。默认空实现。
+    virtual void prefetch(int /*center*/, int /*direction*/) {}
 
     virtual const std::string& sourceName() const = 0;
 

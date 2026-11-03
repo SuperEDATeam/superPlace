@@ -41,7 +41,8 @@ using GLintptr = std::ptrdiff_t;
 #define GL_VERSION 0x1F02
 #define GL_MULTISAMPLE 0x809D
 
-// 这些在 libGL.so 里直接有符号（GL 1.x），不需要 getProcAddress
+// 这些在 libGL.so 里直接有符号（GL 1.x），不需要 getProcAddress；
+// 直接声明，避免宏替换污染系统 <GL/gl.h> 的同名声明。
 extern "C" {
 void glClear(GLbitfield);
 void glClearColor(GLfloat, GLfloat, GLfloat, GLfloat);
@@ -56,15 +57,34 @@ void glPixelStorei(GLenum, GLint);
 GLenum glGetError();
 GLboolean glIsEnabled(GLenum);
 void glGetIntegerv(GLenum, GLint*);
+// GL 1.1 纹理/图元，libGL 直接导出
+void glDrawArrays(GLenum, GLint, GLsizei);
+void glGenTextures(GLsizei, GLuint*);
+void glDeleteTextures(GLsizei, const GLuint*);
+void glBindTexture(GLenum, GLuint);
+void glTexImage2D(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*);
+void glTexParameteri(GLenum, GLenum, GLint);
+void glActiveTexture(GLenum);
 }
 
 #define GL_RGB 0x1907
+#define GL_RED 0x1903
+#define GL_R8 0x8229
 #define GL_UNSIGNED_BYTE 0x1401
 #define GL_PACK_ALIGNMENT 0x0D05
 #define GL_SCISSOR_TEST 0x0C11
 #define GL_SCISSOR_BOX 0x0C10
 #define GL_VIEWPORT 0x0BA2
 #define GL_CURRENT_PROGRAM 0x8B8D
+// 纹理（T6 热力图）
+#define GL_TEXTURE_2D 0x0DE1
+#define GL_TEXTURE_WRAP_S 0x2802
+#define GL_TEXTURE_WRAP_T 0x2803
+#define GL_TEXTURE_MIN_FILTER 0x2801
+#define GL_TEXTURE_MAG_FILTER 0x2800
+#define GL_NEAREST 0x2600
+#define GL_CLAMP_TO_EDGE 0x812F
+#define GL_TEXTURE0 0x84C0
 
 // GL 2.0+ 的函数必须运行时解析
 #define SP_GL_FUNCS(X)                                                              \
@@ -74,6 +94,7 @@ void glGetIntegerv(GLenum, GLint*);
     X(void, GetShaderiv, (GLuint, GLenum, GLint*))                                  \
     X(void, GetShaderInfoLog, (GLuint, GLsizei, GLsizei*, GLchar*))                 \
     X(void, DeleteShader, (GLuint))                                                 \
+    X(void, DeleteProgram, (GLuint))                                                \
     X(GLuint, CreateProgram, ())                                                    \
     X(void, AttachShader, (GLuint, GLuint))                                         \
     X(void, LinkProgram, (GLuint))                                                  \
@@ -113,6 +134,7 @@ bool glLoad();
 #define glGetShaderiv sp_glGetShaderiv
 #define glGetShaderInfoLog sp_glGetShaderInfoLog
 #define glDeleteShader sp_glDeleteShader
+#define glDeleteProgram sp_glDeleteProgram
 #define glCreateProgram sp_glCreateProgram
 #define glAttachShader sp_glAttachShader
 #define glLinkProgram sp_glLinkProgram

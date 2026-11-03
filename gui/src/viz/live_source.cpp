@@ -6,11 +6,20 @@
 //
 // 只在给出 -DSUPERPLACE_ROOT 时才编译进 superplace-gui；独立版 superplace-viz
 // 根本不编译它，因此不沾 FFTW / Eigen / libpng / OpenMP。
+//
+// T11：这里照搬 src/stages/gp_stage.cpp 的【权威四阶段序列】，不再只跑 mGP：
+//   initializeFillers → mGP → legalizeMacros(一次跳变) → 重建 EPlace →
+//   scatterFillers(seedOffset=1) → FILLERONLY → 重建 EPlace → cGP。
+// 关键坑（06 §T11 / 05 §5.6.2）：mLG 后宏被置 F_FIXED，其面积从"可移动电荷"
+// 变成"固定阻挡"，**每个 GP 阶段都各自新建 EPlace**（构造函数重算静态密度项），
+// 不图省事复用一个。阶段语义以 gp_stage.cpp 为准，不在此处另立规矩。
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "db/hpwl.h"
 #include "db/place_db.h"
@@ -18,6 +27,7 @@
 #include "gp/filler.h"
 #include "init/initial_placer.h"
 #include "io/bookshelf_reader.h"
+#include "lg/macro_sa.h"
 #include "util/config.h"
 #include "util/metrics.h"
 #include "viz/live_source.h"
@@ -70,7 +80,11 @@ public:
 
         cfg_.aux_path = auxPath;
         cfg_.random_seed = 1002;
-        // filler 必须在建立几何快照之前插入——节点总数会变，而几何是整场不变量
+        // filler 必须在建立几何快照之前插入——节点总数会变，而几何是整场不变量。
+        // 注意：filler 只按节点面积与行面积计数、用 Rng(seed) 随机撒点，与可移动节点
+        // 的位置无关；而默认 init_method=quadratic 不消耗 Rng、只动 [0,numMovable)。
+        // 故此处先插 filler、worker 里再跑初始布局，与 CLI"先 init 后 gp(内插 filler)"
+        // 进入 mGP 时的 db 状态逐位一致（见 gp_stage.cpp 权威序列）。
         sp::initializeFillers(db_, cfg_);
         buildStatic();
         stride_ = strideIters > 0 ? strideIters : 1;
@@ -112,17 +126,17 @@ private:
         metrics_.values.resize(4);
     }
 
-    /// 从 db 当前坐标抓一帧。**必须在 worker 线程调用**，由 mutex 保护发布。
-    void capture(const char* stage, int iter) {
+    /// 把 db 当前坐标拷进一帧并发布。**必须在 worker 线程调用**，mutex 保护发布。
+    void publish(const char* stage, std::string label) {
         Snapshot s;
-        s.pos.resize(static_cast<size_t>(scene_.nodeCount) * 2);
         const int n = scene_.nodeCount;
+        s.pos.resize(static_cast<size_t>(n) * 2);
         for (int i = 0; i < n; ++i) {
             s.pos[static_cast<size_t>(i)] = db_.node_x[static_cast<size_t>(i)];
             s.pos[static_cast<size_t>(n + i)] = db_.node_y[static_cast<size_t>(i)];
         }
         s.stage = stage;
-        s.label = std::string(stage) + " iter " + std::to_string(iter);
+        s.label = std::move(label);
         {
             std::lock_guard<std::mutex> lk(mu_);
             frames_.push_back(std::move(s));
@@ -130,23 +144,71 @@ private:
         dirty_.store(true);
     }
 
+    /// GP 逐迭代帧：label 带真实迭代号（来自 EPlace 回调，不伪造）。
+    void captureIter(const char* stage, int iter) {
+        publish(stage, std::string(stage) + " iter " + std::to_string(iter));
+    }
+
+    /// 里程碑帧（init / mLG / done）：不是 GP 迭代，label 直接给语义文案，
+    /// **绝不写成 "xxx iter 0" 伪造一个迭代号**。
+    void captureMilestone(const char* stage, const char* label) { publish(stage, label); }
+
     void runEngine() {
         sp::MetricsSink sink;
         if (auto placer = sp::makeInitialPlacer(cfg_.init_method)) {
             placer->place(db_, cfg_, sink);
         }
-        capture("init", 0);
+        captureMilestone("init", "初始布局");
 
-        sp::EPlace engine(db_, cfg_, sink);
-        engine.setIterCallback([this](sp::GpStage stage, int iter, const sp::PlaceDB&) {
-            // 回调在 worker 线程里，db_ 此刻是一致的；每 stride 轮抓一帧，
-            // 否则 330k 节点下每轮 2.6 MB，几百轮就是几百 MB。
+        // 与 gp_stage.cpp 同口径：统计可移动宏，决定后三阶段是否执行。
+        int movableMacros = 0;
+        for (int i = 0; i < db_.numMovable; ++i)
+            if (db_.isMacro(i) && !db_.isFixed(i)) ++movableMacros;
+
+        // 逐迭代回调在 worker 线程里、db 此刻一致；每 stride 轮抓一帧。
+        // stride 只决定抽样密度，不碰 db，故不改变任何阶段的优化轨迹。
+        auto cb = [this](sp::GpStage stage, int iter, const sp::PlaceDB&) {
             if (iter % stride_ != 0) return;
-            capture(sp::toString(stage), iter);
-        });
-        engine.run(sp::GpStage::kMGP);
-        capture("done", 0);
-        std::fprintf(stderr, "[live] 布局结束，HPWL = %.6g\n", sp::computeHPWL(db_));
+            captureIter(sp::toString(stage), iter);
+        };
+
+        // ---- 阶段一：mGP（标准单元 + 可移动宏 + filler）
+        {
+            sp::EPlace engine(db_, cfg_, sink);
+            engine.setIterCallback(cb);
+            engine.run(sp::GpStage::kMGP);
+        }
+
+        if (movableMacros == 0) {
+            // 无可移动宏：mLG / FILLERONLY / cGP 无事可做（与 gp_stage.cpp 同）。
+        } else {
+            // ---- 阶段二：mLG（宏模拟退火合法化，一次性跳变，结束后宏被钉死）
+            // legalizeMacros 无逐轮回调，它一整次跑完才返回——这里补一帧，
+            // 把"mGP 末帧 → mLG 后位置"这一次跳变明确表现出来，且 label 不假装是迭代。
+            sp::legalizeMacros(db_, cfg_, sink);
+            captureMilestone("mLG", "mLG 宏合法化（一次跳变，此后宏不再移动）");
+
+            // ---- 阶段三：FILLERONLY（重撒 filler，只优化 filler，固定轮数）
+            // 宏刚被挪动，旧 filler 分布围着旧宏位置已失效，重撒后跑几轮填匀。
+            sp::scatterFillers(db_, cfg_, /*seedOffset=*/1);
+            {
+                sp::EPlace engine(db_, cfg_, sink);
+                engine.setIterCallback(cb);
+                engine.run(sp::GpStage::kFillerOnly);
+            }
+
+            // ---- 阶段四：cGP（标准单元全局布局，宏已固定不再参与）
+            // 宏被钉死后面积从可移动电荷变固定阻挡，必须新建 EPlace 重算静态密度。
+            {
+                sp::EPlace engine(db_, cfg_, sink);
+                engine.setIterCallback(cb);
+                engine.run(sp::GpStage::kCGP);
+            }
+        }
+
+        captureMilestone("done", "四阶段完成");
+        // 全精度打印，供与 CLI summary 的 double 对拍（%.6g 只有 ~1e-6 相对精度，不够）。
+        std::fprintf(stderr, "[live] 布局结束，HPWL = %.17g\n", sp::computeHPWL(db_));
     }
 
     sp::PlaceDB db_;

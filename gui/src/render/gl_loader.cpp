@@ -1,8 +1,10 @@
+// 先包含 GLFW（会带入系统 <GL/gl.h>），再包含本头文件：
+// 否则本头文件里的 glX→sp_glX 宏会替换 gl.h 自身的声明，造成重声明冲突。
+#include <GLFW/glfw3.h>
+
 #include "render/gl_loader.h"
 
 #include <cstdio>
-
-#include <GLFW/glfw3.h>
 
 #define SP_DEFINE(ret, name, args) ret (*sp_gl##name) args = nullptr;
 SP_GL_FUNCS(SP_DEFINE)

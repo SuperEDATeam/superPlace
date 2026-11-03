@@ -91,6 +91,10 @@ target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
 # 独立版与集成版共用同一份 core，差别只在注入哪个 IPlacementSource。
 add_library(viz_core STATIC
   src/viz/bundle_source.cpp
+  src/viz/summary.cpp
+  src/viz/spatial_index.cpp
+  src/viz/density.cpp
+  src/viz/frame_map.cpp
   src/render/gl_loader.cpp
   src/render/canvas.cpp
   src/app.cpp
@@ -99,6 +103,30 @@ target_include_directories(viz_core PUBLIC src)
 target_link_libraries(viz_core PUBLIC imgui OpenGL::GL Threads::Threads)
 target_include_directories(viz_core SYSTEM PUBLIC ${VIZ_JSON_INC})
 target_compile_options(viz_core PRIVATE -Wall -Wextra)
+
+# ------------------------------------------------------------------ 零依赖测试（T13）
+# 不链接 ImGui/GL/窗口：只编译与渲染无关的纯逻辑源文件，可进 CI、可无头运行。
+enable_testing()
+add_executable(viz_tests
+  test/test_main.cpp
+  test/test_camera.cpp
+  test/test_kind.cpp
+  test/test_bundle.cpp
+  test/test_spatial.cpp
+  test/test_density.cpp
+  test/test_frame_map.cpp
+  test/test_scale.cpp
+  src/viz/bundle_source.cpp
+  src/viz/summary.cpp
+  src/viz/spatial_index.cpp
+  src/viz/density.cpp
+  src/viz/frame_map.cpp
+)
+target_include_directories(viz_tests PRIVATE src)
+target_include_directories(viz_tests SYSTEM PRIVATE ${VIZ_JSON_INC})
+target_compile_definitions(viz_tests PRIVATE
+  SYNTHETIC_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/sample-data/synthetic")
+add_test(NAME viz_tests COMMAND viz_tests)
 
 # ------------------------------------------------------- 目标一：独立查看器
 add_executable(superplace-viz src/main_viz.cpp)
@@ -133,6 +161,25 @@ if(SUPERPLACE_ROOT)
   elseif(TARGET PkgConfig::FFTW3)
     target_link_libraries(superplace-gui PRIVATE PkgConfig::FFTW3)
   endif()
+
+  # T11：实时源四阶段序列的无头测试（不开窗口、不建 GL 上下文）。
+  # 只在集成模式下存在——它要链 libsuperplace 才能真正跑引擎。
+  add_executable(viz_live_tests
+    test/test_live_stages.cpp
+    src/viz/live_source.cpp
+  )
+  target_include_directories(viz_live_tests PRIVATE
+    src ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
+  target_compile_definitions(viz_live_tests PRIVATE
+    TINY_MACROS_AUX="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/tiny_macros/tiny.aux")
+  target_link_libraries(viz_live_tests PRIVATE ${SUPERPLACE_LIB}
+    OpenMP::OpenMP_CXX PNG::PNG Eigen3::Eigen Threads::Threads)
+  if(TARGET PkgConfig::FFTW3F)
+    target_link_libraries(viz_live_tests PRIVATE PkgConfig::FFTW3F)
+  elseif(TARGET PkgConfig::FFTW3)
+    target_link_libraries(viz_live_tests PRIVATE PkgConfig::FFTW3)
+  endif()
+  add_test(NAME viz_live_tests COMMAND viz_live_tests)
 else()
   message(STATUS "独立模式：只构建 superplace-viz（不需要任何算法侧依赖）")
 endif()

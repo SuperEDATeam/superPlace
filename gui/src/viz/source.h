@@ -28,6 +28,9 @@ public:
     virtual const SceneInfo&    scene()    const = 0;
     virtual const NodeGeometry& geometry() const = 0;
     virtual const MetricsTable* metrics()  const = 0;   ///< 没有则返回 nullptr
+    /// summary.json 总览（T1）。没有/解析失败返回 nullptr。
+    /// 默认实现返回 nullptr：LiveSource 不提供也无需改动本接口之外的代码。
+    virtual const SummaryTable* summary() const { return nullptr; }
 
     /// 可用帧数。实时源会随迭代推进不断变大。
     virtual int  frameCount() const = 0;

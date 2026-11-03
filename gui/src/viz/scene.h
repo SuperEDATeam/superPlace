@@ -83,4 +83,31 @@ struct MetricsTable {
     }
 };
 
+/// summary.json 的一个标量值。算法侧写出来的有的是数字、有的是字符串，
+/// 前端不假设类型，两种都留着，显示时按 isString 选择。
+struct SummaryValue {
+    bool isString = false;
+    std::string text;     ///< isString 时的原始字符串（原样展示，不做数值换算）
+    double number = 0.0;
+};
+
+/// summary.json 的健壮表示。
+///
+/// ⚠️ 键会随算法演进增减（06 §T1）：这里【不写死键名清单】，按"有则显示"处理，
+/// 未知键原样列出，缺键不报错，文件损坏/缺失时整个表为空而不是崩溃。
+struct SummaryTable {
+    /// 顶层标量键值对，保持 JSON 里的出现顺序。
+    std::vector<std::pair<std::string, SummaryValue>> entries;
+    /// `durations_ms` 子对象（各阶段耗时），单独摊平成键值对。
+    std::vector<std::pair<std::string, double>> durationsMs;
+
+    bool empty() const { return entries.empty() && durationsMs.empty(); }
+
+    const SummaryValue* find(const std::string& key) const {
+        for (const auto& e : entries)
+            if (e.first == key) return &e.second;
+        return nullptr;
+    }
+};
+
 }  // namespace viz

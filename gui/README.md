@@ -32,6 +32,8 @@
 **已完成（本轮）**：T14、T15、T17，以及 **T16**——整体移除旧实时集成模式
 （旧内嵌引擎数据源、对应可执行目标与其无头测试、配套 fixture、以及把算法构建目录
 指进来的 CMake 分支与轮询接口），本工程始终零算法依赖。
+**注意：百万级（1M 节点）连续回放性能验收未通过**（llvmpipe 软渲染 ≈15fps、全部帧 >33ms），
+详见后文「性能」段，勿视为全部达标。
 
 **未做（仍属授权边界之外）**：T9 names.txt 名称生成（依赖算法/导出端产出 names.txt）、
 T10 网表连接性与 net 高亮/着色（无 `nets.bin` 时显式禁用、不伪造）。
@@ -87,7 +89,9 @@ ctest --test-dir gui/build --output-on-failure
 | --- | --- |
 | `<bundle 目录>` | 加载指定 bundle |
 | `--frame N` | 启动时跳到第 N 个关键帧（`-1` = 最后一帧） |
-| `--bench N` | T14 连续回放 N 轮（含插值）并报告中位/p95 耗时 |
+| `--bench N` | 微基准：不开 ImGui，只连续 N 帧画布矩形/LOD 渲染并报告中位/p95 |
+| `--bench-ui N` | **真实 UI 端到端基准**：跑完整 drawUi/ImGui/LOD/热图/面板 N 帧并循环，报告 mean/p50/p95/>33ms 帧数/循环数 |
+| `--bench-csv FILE` | 配合 `--bench-ui`，把每帧 frame,render_ms,swap_ms,globalT,lo,hi,alpha,playing 写入 FILE 供独立复算 |
 | `--screenshot out.ppm` | 保存截图（PPM，可转 PNG 查看） |
 | `--shot-after 秒` | 跑 UI 到点自动截图退出，用于脚本化出图 |
 | `--compare` | 自检：启动即开启两帧对比（A=0, B=最后一帧），便于无交互验证 T8 |
@@ -99,9 +103,9 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 
 ## 数据与目录
 
-**测试数据**：`test_data/`、`benchmarks/`、`results/` 在 `.gitignore` 里。
-新 clone 唯一数据是 `sample-data/synthetic`（14,681 节点 / 40 帧），覆盖全部节点形态。
-真实 bundle（如 newblue1）由导出侧提供；离线生成走 `scripts/make_viz.py --aux ...`。
+**测试数据**：上游 `test_data/` 已随仓库入库（以仓库实际内容为准）；`results/`、截图/日志在
+`.gitignore` 里，不提交。内置合成样本 `sample-data/synthetic`（14,681 节点 / 40 帧）
+覆盖全部节点形态。真实 bundle（如 newblue1）由导出侧提供；离线生成走 `scripts/make_viz.py --aux ...`。
 
 | 路径 | 职责 |
 | --- | --- |
@@ -144,7 +148,7 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 - **真实数据验证**：newblue1（63 帧/330,474 节点/t=0..598/breakBefore@1,51）截图帧 30/61
   形态明显不同、中文 Noto CJK 渲染正常；密度真值对照帧 3/20/30/61 的 maxNorm/nonzero/top bin
   与独立 JSON 完全一致（非截图 md5）。
-- **性能（llvmpipe 软渲染端到端 --bench-ui，依据独立 CSV：gui-evidence/final_newblue1.csv、final_1M.csv）**：
+- **性能（llvmpipe 软渲染端到端 --bench-ui，依据最终 CSV：gui-evidence/final_newblue1.csv、final_1M.csv）**：
   newblue1 4000 帧 playing 4000/4000、globalT[0,597.8]（全片遍历）、循环 3 次，
   mean ≈8.8ms、p50 8.4、p95 ≈13.8、仅首帧 >33ms，≈112fps。
   **1M 合成（220 万节点）240 帧 mean ≈65ms、p50 64、p95 ≈80，240/240 帧 >33ms，≈15fps——

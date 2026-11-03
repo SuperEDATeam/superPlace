@@ -1,5 +1,17 @@
 set(SP_TEST_DATA_DIR "${CMAKE_SOURCE_DIR}/test_data")
 
+# adaptec1 原始文件 40 MB（.nets 单个就 34 MB），以 adaptec1.tar.xz（2.9 MB）入库，
+# 首次配置时解压到 test_data/adaptec1/（该目录被 .gitignore 忽略）。本地已有则不动。
+if(NOT EXISTS "${SP_TEST_DATA_DIR}/adaptec1/adaptec1.aux")
+    if(EXISTS "${SP_TEST_DATA_DIR}/adaptec1.tar.xz")
+        message(STATUS "解压测试数据 test_data/adaptec1.tar.xz")
+        file(ARCHIVE_EXTRACT INPUT "${SP_TEST_DATA_DIR}/adaptec1.tar.xz"
+                             DESTINATION "${SP_TEST_DATA_DIR}")
+    else()
+        message(WARNING "缺少 test_data/adaptec1，test_parser 与 test_roundtrip 会失败")
+    endif()
+endif()
+
 function(sp_add_test name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE superplace)

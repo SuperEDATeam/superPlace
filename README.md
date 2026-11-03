@@ -99,6 +99,10 @@ python3 scripts/make_gif.py results/adaptec1
 cd build && ctest --output-on-failure
 ```
 
+测试数据随仓库提供：`test_data/thin1/`（208 KB）原样入库；`test_data/adaptec1/`（40 MB）以
+`adaptec1.tar.xz`（2.9 MB）入库，**首次 `cmake` 配置时自动解压**，不需要手动下载。
+`adaptec4` 没有测试用到，不入库。
+
 | 测试 | 内容 |
 | --- | --- |
 | `test_parser` | adaptec1 的 21 项统计数字与课程基准逐项对拍 |

@@ -48,6 +48,8 @@ std::string Config::usage() {
         "  --threads <n>       OpenMP thread count (0 = auto)\n"
         "  --no-plot           Disable image output\n"
         "  --full-plot         Emit an image every iteration\n"
+        "  --frame-stride <n>  Record positions every n GP iterations into a viz bundle\n"
+        "                      (<out>/<benchmark>/viz/) for frontend playback (0 = off)\n"
         "  --verbose           Verbose logging\n"
         "  -h, --help          Show this help\n";
 }
@@ -77,6 +79,7 @@ void Config::loadJson(const std::string& path) {
     get("plot_min_side", plot_min_side);
     get("plot_margin", plot_margin);
     get("plot_fillers", plot_fillers);
+    get("frame_stride", frame_stride);
     get("target_density", target_density);
     get("target_overflow", target_overflow);
     get("cgp_target_overflow", cgp_target_overflow);
@@ -138,6 +141,8 @@ Config Config::fromArgs(int argc, char** argv) {
             cfg.plot = false;  cliSet.insert("plot");
         } else if (a == "--full-plot") {
             cfg.full_plot = true; cliSet.insert("full_plot");
+        } else if (a == "--frame-stride") {
+            cfg.frame_stride = std::stoi(need(i, "--frame-stride")); ++i; cliSet.insert("frame_stride");
         } else if (a == "--verbose") {
             cfg.verbose = true;   cliSet.insert("verbose");
         } else {
@@ -156,6 +161,7 @@ Config Config::fromArgs(int argc, char** argv) {
         if (cliSet.count("num_threads"))  fromFile.num_threads  = cfg.num_threads;
         if (cliSet.count("plot"))         fromFile.plot         = cfg.plot;
         if (cliSet.count("full_plot"))    fromFile.full_plot    = cfg.full_plot;
+        if (cliSet.count("frame_stride")) fromFile.frame_stride = cfg.frame_stride;
         if (cliSet.count("verbose"))      fromFile.verbose      = cfg.verbose;
         if (cliSet.count("aux_path"))     fromFile.aux_path     = cfg.aux_path;
         if (cliSet.count("init_method"))  fromFile.init_method  = cfg.init_method;

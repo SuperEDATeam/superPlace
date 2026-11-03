@@ -34,6 +34,10 @@ struct GpResult {
     double hpwl       = 0.0;
     float  overflow   = 0.f;
     bool   converged  = false;   ///< 是否因 τ 达标而停（false 表示耗尽迭代上限）
+    /// τ 停滞时终解会回退到更早某一轮的快照。此时交付的布局与最后一轮的位置不连续，
+    /// 录帧（前端回放）要在这里标断点，否则插值会画出单元"往回走"的假动作。
+    bool   stagnated    = false;
+    int    rollbackIter = -1;    ///< 回退到的轮次；未回退为 -1
 };
 
 /// 一次全局布局的执行体。构造时完成 bin 网格初始化等一次性工作，

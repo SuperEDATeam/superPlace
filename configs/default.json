@@ -12,6 +12,7 @@
   "plot_min_side": 1000,
   "plot_margin": 30,
   "plot_fillers": false,
+  "frame_stride": 0,
 
   "init_method": "quadratic",
   "qp_max_iter": 20,

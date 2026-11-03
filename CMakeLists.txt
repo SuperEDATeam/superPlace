@@ -43,6 +43,7 @@ set(SUPERPLACE_SOURCES
     src/db/hpwl.cpp
     src/io/bookshelf_reader.cpp
     src/io/bookshelf_writer.cpp
+    src/io/viz_writer.cpp
     src/numeric/cpu/cpu_poisson.cpp
     src/numeric/cpu/nesterov.cpp
     src/plot/png_writer.cpp

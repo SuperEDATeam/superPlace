@@ -14,6 +14,7 @@
 #include "db/place_db.h"
 #include "io/bookshelf_reader.h"
 #include "io/bookshelf_writer.h"
+#include "io/viz_writer.h"
 #include "plot/cimg_renderer.h"
 #include "stage.h"
 #include "util/config.h"
@@ -61,6 +62,17 @@ int main(int argc, char** argv) {
             SP_INFO("parse done in %.1f ms", t.elapsedMs());
         }
 
+        // ---- 录制（可选）：给前端回放用的 viz bundle
+        //
+        // 必须在任何阶段运行之前打开：几何与标志位在这里取一次，而 mLG 会把宏置为
+        // F_FIXED，之后再取的话宏在前端会被当成固定终端着色。
+        sp::VizBundleWriter viz;
+        if (cfg.frame_stride > 0) {
+            viz.open((outDir / "viz").string(), cfg.benchmark_name, db, cfg.frame_stride);
+            sink.setFrameHook([&viz, &db](const sp::FrameMark& m) { viz.append(db, m); });
+            sink.markFrame({"input", -1, 0.0, false, "输入（.pl 初始位置）"});
+        }
+
         // ---- 组装并执行 pipeline
         for (const std::string& stageName : cfg.stages) {
             std::unique_ptr<sp::PlacementStage> stage = sp::makeStage(stageName);
@@ -76,6 +88,12 @@ int main(int argc, char** argv) {
             sink.endStage(ms);
             SP_INFO("stage '%s' finished in %.1f ms", stage->name(), ms);
 
+            // 每个阶段结束补一个里程碑帧。阶段内部没录逐轮帧时（如二次布局），
+            // 这一帧与上一帧之间是一次跳变，前端不得插值。gp 阶段自己会录收尾帧，
+            // 这里再录的那一帧位置完全相同，会被写出器按重复帧跳过。
+            sink.markFrame({stage->name(), -1, viz.lastT(), true,
+                            std::string(stage->name()) + " 结束"});
+
             // 每阶段自动落 .pl 快照
             const fs::path plPath = outDir / (cfg.benchmark_name + "." + stage->name() + ".pl");
             sp::BookshelfWriter::writePl(plPath.string(), db);
@@ -90,6 +108,7 @@ int main(int argc, char** argv) {
         }
 
         sink.writeSummary((outDir / "summary.json").string());
+        viz.finish(outDir.string());
         SP_INFO("results in %s", outDir.c_str());
     } catch (const std::exception& e) {
         std::fprintf(stderr, "error: %s\n", e.what());

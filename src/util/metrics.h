@@ -2,6 +2,7 @@
 // 全局布局是会震荡、会发散、会安静收敛到垃圾的迭代过程——没有逐迭代指标就是在盲调。
 #pragma once
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -19,6 +20,15 @@ struct IterMetrics {
     float  grad_norm_den    = 0.f;
     float  max_displacement = 0.f;
     double elapsed_ms       = 0.0;
+};
+
+/// "此刻的布局值得录一帧"的通知（前端回放用，见 io/viz_writer.h）。
+struct FrameMark {
+    std::string stage;              ///< input / init / mGP / FILLERONLY / mLG / cGP
+    int         iter = -1;          ///< 阶段内迭代号；-1 表示阶段里程碑而非某一轮
+    double      t = 0.0;            ///< 全局进度：累计 GP 迭代数，前端按它均匀播放
+    bool        breakBefore = false;///< 与上一帧之间是跳变（如 mLG），前端不得插值
+    std::string label;
 };
 
 /// 逐迭代指标写 CSV，阶段耗时与总览写 summary.json。
@@ -43,7 +53,16 @@ public:
 
     const std::string& outputDir() const { return out_dir_; }
 
+    /// 录帧钩子。各阶段只负责说"这一刻值得录"，真正去读 PlaceDB、写文件的是
+    /// 调用方注入的钩子——util 层因此不必认识 PlaceDB。未设置钩子时 markFrame 是空操作。
+    using FrameHook = std::function<void(const FrameMark&)>;
+    void setFrameHook(FrameHook hook) { frame_hook_ = std::move(hook); }
+    void markFrame(const FrameMark& m) const {
+        if (frame_hook_) frame_hook_(m);
+    }
+
 private:
+    FrameHook frame_hook_;
     std::string out_dir_;
     std::vector<std::string> stage_stack_;
     std::vector<std::pair<std::string, std::vector<IterMetrics>>> stages_;

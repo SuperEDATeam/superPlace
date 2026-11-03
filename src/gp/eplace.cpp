@@ -399,6 +399,8 @@ GpResult EPlace::run(GpStage stage) {
                 SP_WARN("%s: 此刻 HPWL=%.6g，回退点 HPWL=%.6g —— 继续跑只会让线长"
                         "单调膨胀而 τ 毫无改善", toString(stage), s.hpwl, pick->hpwl);
                 s.pos = pick->pos;
+                result.stagnated = true;
+                result.rollbackIter = pick->iter;
                 break;
             }
         }

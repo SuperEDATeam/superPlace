@@ -86,8 +86,12 @@ python3 scripts/make_gif.py results/adaptec1
 [04-Benchmark 调研与获取指南](work_report/04-Benchmark%20调研与获取指南.md)。
 
 主要参数：`--stage <list>` 选择阶段、`--seed <n>` 随机种子、
-`--threads <n>` 线程数、`--no-plot` 关闭出图、`--full-plot` 逐迭代出图。
+`--threads <n>` 线程数、`--no-plot` 关闭出图、`--full-plot` 逐迭代出图、
+`--frame-stride <n>` 每 n 轮录一帧给前端回放（写到 `results/<benchmark>/viz/`）。
 完整用法 `--help`。
+
+> 同时跑两个布局任务时请把线程分开（如各加 `--threads 16`）。OpenMP 线程数超过核数时
+> 会在屏障处空转，实测 newblue1 两个任务并发时各自慢了十几倍。
 
 ## 测试
 
@@ -107,6 +111,7 @@ cd build && ctest --output-on-failure
 | `test_density` | 密度缩放规则、local smoothing、τ、电荷守恒 |
 | `test_filler` | filler 面积配平、四舍五入、负面积保护 |
 | `test_macro_sa` | 宏合法化：零重叠、行对齐、增量线长与全量一致、确定性 |
+| `test_viz_writer` | 前端回放 bundle 写出器：只写真实节点、重复帧跳过、标志位在开跑前取定 |
 | `test_eplace` | mGP 主循环：密度项符号、已达标不动、停滞保护、cGP 宏冻结、确定性 |
 
 ## 目录

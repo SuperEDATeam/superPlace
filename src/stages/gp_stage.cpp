@@ -68,13 +68,38 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
     FramePlotter plotter{cfg, sink.outputDir() + "/plots", 0};
     Timer timer;
 
+    // 逐轮回调：出图（--full-plot）与录帧（--frame-stride）共用一个钩子。
+    // t 是跨 mGP / FILLERONLY / cGP 累计的迭代数，前端按它均匀回放；
+    // 每个子阶段的 iter 都从 0 重数，所以要靠 tOffset 接起来。
+    double tOffset = 0.0;
+    // 子阶段收尾帧：run() 返回后 db 里是交付的终解。通常它与最后一轮回调的位置
+    // 逐位相同（达标时交付的就是那一轮的前瞻点），会被写出器当重复帧跳过；
+    // 但 τ 停滞时终解回退到更早的某一轮，与最后一轮不连续，必须标断点。
+    auto markEnd = [&](GpStage stage, const GpResult& r) {
+        const std::string name = toString(stage);
+        sink.markFrame({name, r.iterations, tOffset, r.stagnated,
+                        r.stagnated ? name + " 结束（τ 停滞，回退到第 " +
+                                          std::to_string(r.rollbackIter) + " 轮）"
+                                    : name + " 结束"});
+    };
+    auto onIter = [&](GpStage stage, int iter, const PlaceDB& d) {
+        plotter(stage, iter, d);
+        if (cfg.frame_stride > 0 && iter % cfg.frame_stride == 0) {
+            sink.markFrame({toString(stage), iter, tOffset + iter, false,
+                            std::string(toString(stage)) + " iter " + std::to_string(iter)});
+        }
+    };
+
     // ---- 阶段一：mGP（混合尺寸全局布局，标准单元与宏一起优化）
     GpResult mgp;
     {
         EPlace engine(db, cfg, sink);
-        engine.setIterCallback(std::ref(plotter));
+        engine.setIterCallback(onIter);
         mgp = engine.run(GpStage::kMGP);
     }
+    // 单独补一帧，保证回放的终点就是写进 .pl 的那个布局
+    tOffset = mgp.iterations;
+    markEnd(GpStage::kMGP, mgp);
     sink.setSummary("mgp_hpwl", mgp.hpwl);
     sink.setSummary("mgp_overflow", mgp.overflow);
     sink.setSummary("mgp_iterations", mgp.iterations);
@@ -98,6 +123,9 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
 
         // ---- 阶段二：mLG（宏模拟退火合法化，结束后宏被钉死）
         const MacroSaResult mlg = legalizeMacros(db, cfg, sink);
+        // mLG 是一次性跳变（SA 没有逐轮回调），宏直接落到合法位置。
+        // 标 breakBefore：前端在这里必须硬切，插值会画出宏"滑过去"的假动作。
+        sink.markFrame({"mLG", -1, tOffset, true, "mLG 宏合法化（宏跳到合法位置）"});
 
         // mLG 把宏钉死会改变密度场的构成（宏从可移动电荷变成固定阻挡），
         // 这一步之后的 τ 才是 cGP 真正要面对的初值，必须单独量出来。
@@ -147,18 +175,23 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         GpResult fo;
         {
             EPlace engine(db, cfg, sink);
-            engine.setIterCallback(std::ref(plotter));
+            engine.setIterCallback(onIter);
             fo = engine.run(GpStage::kFillerOnly);
         }
+        // FILLERONLY 只动 filler，录的帧里真实节点不动，会被写出器按重复帧跳过；
+        // 但它的轮数仍计入 t，保证与 metrics.csv 的阶段顺序对得上。
+        tOffset += fo.iterations;
         sink.setSummary("filleronly_iterations", fo.iterations);
 
         // ---- 阶段四：cGP（标准单元全局布局，宏不再参与）
         GpResult cgp;
         {
             EPlace engine(db, cfg, sink);
-            engine.setIterCallback(std::ref(plotter));
+            engine.setIterCallback(onIter);
             cgp = engine.run(GpStage::kCGP);
         }
+        tOffset += cgp.iterations;
+        markEnd(GpStage::kCGP, cgp);
         sink.setSummary("cgp_hpwl", cgp.hpwl);
         sink.setSummary("cgp_overflow", cgp.overflow);
         sink.setSummary("cgp_iterations", cgp.iterations);

@@ -30,6 +30,12 @@ struct Config {
     int  plot_margin   = 30;
     bool plot_fillers  = false;
 
+    // ------------------------------------------------------- 录制（前端回放）
+    /// >0 时每隔这么多轮 GP 迭代录一帧位置，连同几何一起写成 viz bundle
+    /// （<out>/<benchmark>/viz/），供前端拖动进度条回放全过程。0 = 不录。
+    /// 只读 db，不影响优化轨迹；格式见 work_report/06 §3。
+    int  frame_stride  = 0;
+
     // ---------------------------------------------------------- 初始布局（M2）
     /// random | cluster_fc | cluster_bc | quadratic
     std::string init_method = "quadratic";

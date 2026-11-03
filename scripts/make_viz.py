@@ -8,6 +8,15 @@
 用法
 ----
 
+**真实设计的回放 bundle 请直接用 CLI 录制，不要用本脚本转换**：
+
+    ./build/superplace-cli --aux <design.aux> --stage parse,init,gp --frame-stride 10
+    #  -> results/<design>/viz/，每 10 轮 GP 迭代一帧，带 names.txt 与断点标记
+
+本脚本的转换模式只能拿到各阶段结束时的 .pl（每个设计 3~4 帧），适合给旧的
+results 目录补出一个静态 bundle。两种来源的节点顺序不同（CLI 是引擎内存顺序，
+本脚本是 .nodes 文件顺序），**不要把两边的帧文件混在一个 bundle 里**。
+
 从一次真实运行的产物打包（需要 benchmark 原始 .aux 与 results 目录）：
 
     python3 scripts/make_viz.py \\
@@ -415,6 +424,34 @@ def verify(path: Path) -> int:
         if wrong:
             errs.append(f"{len(wrong)} 个帧文件尺寸不符（应为 {n * 8} 字节），"
                         f"首个：{wrong[0][0]} 实得 {wrong[0][1]}")
+
+        # 可选的回放字段（CLI --frame-stride 产出的 bundle 会带）。
+        # 不带也合法；带了就必须类型正确、t 单调不减——前端按 t 均匀回放，
+        # t 倒退会让进度条来回跳。
+        ts = []
+        for i, fr in enumerate(frames):
+            if "iter" in fr and not isinstance(fr["iter"], int):
+                errs.append(f"frames[{i}].iter 应为整数")
+            if "breakBefore" in fr and not isinstance(fr["breakBefore"], bool):
+                errs.append(f"frames[{i}].breakBefore 应为布尔值")
+            if "t" in fr:
+                if isinstance(fr["t"], bool) or not isinstance(fr["t"], (int, float)):
+                    errs.append(f"frames[{i}].t 应为数值")
+                else:
+                    ts.append((i, fr["t"]))
+        back = [(i, a, b) for (_, a), (i, b) in zip(ts, ts[1:]) if b < a]
+        if back:
+            i, a, b = back[0]
+            errs.append(f"t 必须单调不减：frames[{i}].t={b} < 前一帧 {a}（共 {len(back)} 处）")
+
+        if scene.get("hasNames"):
+            names = path / "names.txt"
+            if not names.is_file():
+                errs.append("hasNames=true 但没有 names.txt")
+            else:
+                with names.open("rb") as f:
+                    lines = sum(1 for _ in f)
+                need(lines == n, f"names.txt 应有 {n} 行（与 nodeCount 一致），实得 {lines}")
 
     if scene.get("hasMetrics") and not (path / "metrics.csv").is_file():
         errs.append("hasMetrics=true 但没有 metrics.csv")

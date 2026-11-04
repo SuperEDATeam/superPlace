@@ -1177,9 +1177,9 @@ if (sectionHeader("时间轴 / 回放")) {
                 item(ColorMode::Kind, "按类别", true);
                 item(ColorMode::Density, "按局部密度（面积重叠）", true);
                 item(ColorMode::Displacement, "按帧间位移量", true);
-                ImGui::BeginDisabled(true);
-                ImGui::Selectable("按 net 数（需 T10 网表，当前不可用）");
-                ImGui::EndDisabled();
+                const bool hasNets = src_->nets() != nullptr;
+                item(ColorMode::Kind, hasNets ? "按 net 数" : "按 net 数（无网表）", hasNets);
+                if (!hasNets) ImGui::TextDisabled("bundle 不含 nets/：网表功能禁用");
                 ImGui::EndCombo();
             }
             if (compareOn_) {

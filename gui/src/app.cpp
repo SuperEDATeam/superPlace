@@ -1105,16 +1105,29 @@ void App::drawSidebar() {
         // 主功能：回放/时间轴放在数据源之后、总览之前（使用者打开即见播放控件）。
         if (sectionHeader("总览"))
         if (const SummaryTable* sum = src_->summary(); sum && !sum->empty()) {
+            // T22：关键指标直接显示，其余进默认收起的「全部字段」。
+            static const char* kKeys[] = {"hpwl", "overflow", "total_time_s", "finalHpwl",
+                                          "finalOverflow", "mLG displacement"};
+            auto isKey = [](const std::string& k) {
+                for (const char* d : kKeys)
+                    if (k.find(d) != std::string::npos) return true;
+                return false;
+            };
             for (const auto& [key, val] : sum->entries) {
+                if (!isKey(key)) continue;
                 const char* label = summaryDisplayName(key);
-                const bool warn = summaryIsWarning(key, val);
-                ImGui::PushStyleColor(ImGuiCol_Text,
-                                      warn ? ImVec4(1.f, 0.2f, 0.2f, 1.f)
-                                           : ImGui::GetStyleColorVec4(ImGuiCol_Text));
                 ImGui::Text("%s", label ? label : key.c_str());
                 ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
                 ImGui::Text("%s", formatSummaryValue(val).c_str());
-                ImGui::PopStyleColor();
+            }
+            if (ImGui::TreeNode("全部字段")) {
+                for (const auto& [key, val] : sum->entries) {
+                    const char* label = summaryDisplayName(key);
+                    ImGui::Text("%s", label ? label : key.c_str());
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
+                    ImGui::Text("%s", formatSummaryValue(val).c_str());
+                }
+                ImGui::TreePop();
             }
             if (!sum->durationsMs.empty()) {
                 ImGui::SeparatorText("阶段耗时 (ms)");

@@ -17,7 +17,10 @@
 #include <string>
 
 #include "viz/scene.h"
+
 namespace viz {
+struct NetList;  // T10
+
 
 class IPlacementSource {
 public:
@@ -51,6 +54,9 @@ public:
     virtual void prefetch(int /*center*/, int /*direction*/) {}
 
     virtual const std::string& sourceName() const = 0;
+
+    /// T10：网表（§3.9）。无 nets/ 或校验失败返回 nullptr。首次调用才加载。
+    virtual const NetList* nets() const { return nullptr; }
 
 protected:
     IPlacementSource() = default;

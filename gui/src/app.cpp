@@ -772,11 +772,13 @@ void App::drawUi() {
             ImGui::DockBuilderAddNode(dockId, ImGuiDockNodeFlags_DockSpace |
                                                   ImGuiDockNodeFlags_PassthruCentralNode);
             ImGui::DockBuilderSetNodeSize(dockId, ImGui::GetMainViewport()->Size);
-            ImGuiID right = 0, center = dockId;
+            ImGuiID right = 0, center = dockId, bottom = 0;
             // 中央节点【故意留空】，GL 画布直接画进它的矩形，见 drawCanvasPanel 的说明
             right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.22f, nullptr, &center);
+            bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.22f, nullptr, &center);
             ImGui::DockBuilderDockWindow("控制", right);
             ImGui::DockBuilderDockWindow("检视", right);
+            ImGui::DockBuilderDockWindow("收敛曲线", bottom);
             ImGui::DockBuilderFinish(dockId);
         }
     }
@@ -800,10 +802,8 @@ void App::drawCanvasPanel(unsigned dockId) {
     if (!central) return;
 
     const float newW = std::max(central->Size.x, 1.f);
-    // R3：底部"收敛曲线/帧对比"是钉在视口底部的固定高 250 浮动窗口（未进 dock），
-    // 中央节点却占满全高；必须扣掉这条保留带，否则比例尺/横轴刻度会画进曲线区。
-    const float kReservedBottom = 250.f;
-    const float newH = std::max(central->Size.y - kReservedBottom, 1.f);
+    // T19：画布矩形 = 中央节点矩形（收敛曲线已停靠进底部子节点，不再用估算保留带）。
+    const float newH = std::max(central->Size.y, 1.f);
 
     // T2：窗口/面板尺寸变化后保持视野。中心不动，scale 按短边比例缩放，
     // 绝不重新 fit（否则丢掉用户缩放到的局部）。
@@ -862,7 +862,9 @@ void App::drawCanvasPanel(unsigned dockId) {
                     std::exp(io.MouseWheel * 0.25f));
     }
 
-    ImDrawList* fg = ImGui::GetForegroundDrawList();
+    // T19：坐标轴/比例尺/读数/选中框/箭头画背景层（GL 画布之上、面板之下），clip 到画布。
+    ImDrawList* fg = ImGui::GetBackgroundDrawList();
+    fg->PushClipRect(lo, hi, true);
 
     if (src_) {
         // ---- T3：坐标读数
@@ -977,6 +979,7 @@ void App::drawCanvasPanel(unsigned dockId) {
             }
         }
     }
+    fg->PopClipRect();
 }
 
 void App::drawSidebar() {
@@ -995,6 +998,7 @@ void App::drawSidebar() {
             status_ = "加载失败：" + err;
         }
     }
+    if (ImGui::SmallButton("重置布局")) layoutBuilt_ = false;
 
     if (src_) {
         const SceneInfo& sc = src_->scene();
@@ -1172,10 +1176,7 @@ void App::drawSidebar() {
 }
 
 void App::drawMetricsPanel() {
-    // 钉在视口左下（首帧固定，之后用户可拖动/重 dock/缩放）。
-    const ImVec2 vs = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(0, vs.y - 250.f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(vs.x * 0.70f, 250.f), ImGuiCond_FirstUseEver);
+    // T19：收敛曲线停靠进底部节点，不再浮动固定位置。
     ImGui::Begin("收敛曲线");
     const MetricsTable* m = src_ ? src_->metrics() : nullptr;
     if (!m || m->rowCount == 0) {

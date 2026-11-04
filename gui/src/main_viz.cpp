@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
             std::printf(
                 "superplace-viz —— superPlace 布局查看器\n\n"
                 "用法: superplace-viz [bundle 目录] [--no-vsync]\n"
+                "          [--width W] [--height H]\n"
                 "          [--bench N] [--screenshot out.ppm] [--shot-after 秒]\n\n"
                 "bundle 由 scripts/make_viz.py 生成，格式见\n"
                 "work_report/06-前端开发方案与接口契约.md\n");

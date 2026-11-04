@@ -792,11 +792,13 @@ void App::drawUi() {
             ImGui::DockBuilderAddNode(dockId, ImGuiDockNodeFlags_DockSpace |
                                                   ImGuiDockNodeFlags_PassthruCentralNode);
             ImGui::DockBuilderSetNodeSize(dockId, ImGui::GetMainViewport()->Size);
-            ImGuiID right = 0, center = dockId, bottom = 0;
+            ImGuiID right = 0, center = dockId, bottom = 0, rightTop = 0;
             // 中央节点【故意留空】，GL 画布直接画进它的矩形，见 drawCanvasPanel 的说明
             right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.22f, nullptr, &center);
             bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.22f, nullptr, &center);
-            ImGui::DockBuilderDockWindow("控制", right);
+            // T24：右栏上下切分——控制在上、检视在下，各自独立节点（非标签页）。
+            rightTop = ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.55f, nullptr, &right);
+            ImGui::DockBuilderDockWindow("控制", rightTop);
             ImGui::DockBuilderDockWindow("检视", right);
             ImGui::DockBuilderDockWindow("收敛曲线", bottom);
             ImGui::DockBuilderFinish(dockId);

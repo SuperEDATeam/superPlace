@@ -53,7 +53,7 @@ scripts/viz.sh path/to/viz           # 直接打开一个已有的 bundle 目录
 | T5 | 按阶段分色收敛曲线、时间轴游标、点曲线跳帧；metrics 行↔抽样帧按 Exact/Nearest/Approx/Unavailable 四级诚实映射，未知阶段不跨跳，缺失值 NaN 断线不补 0 |
 | T6 | 节点面积重叠密度热图（可视化面积占比，**不是**优化器 τ/local smoothing）；远景按行高像素阈值自动 LOD 切热力图 |
 | T7 | 按类别 / 按局部密度 / 按帧间位移 连续色表着色 + 图例；**按 net 数因 T10 无 nets.bin 明确禁用**，不伪造 |
-| T8 | 两帧 A/B 对比、位移着色、抽样位移向量（≤约 4000 支）、最大/平均位移 |
+| T8/T21 | 位移着色（参考三选：瞬时/相对init结束/相对输入）+ 位移箭头图层；独立帧对比窗口已移除 |
 | T13 | 零依赖无头单测（`viz_tests`，不引入 gtest），覆盖相机/类别优先级/bundle 解析/空间索引/密度/帧映射/比例尺 |
 | T14 | **连续回放**：按全局 t 线性插值、相邻 t 相等或 `breakBefore` 硬切、`iter==-1` 里程碑停留 0.5s、缺 t 退化为帧序；播放/暂停/调速（轮/秒）/循环/关键帧与阶段前后跳转/拖动 scrub；统计取最近关键帧、停下按插值重算并诚实标注；热力图固定标尺 |
 | T15 | **FrameView 共享零拷贝所有权**：`shared_ptr<const vector<float>>` 持数据，LRU 淘汰只放缓存引用不影响持帧者；`frameInfo()` 只读元数据不读位置文件，消除启动读盘 |
@@ -124,7 +124,7 @@ ctest --test-dir gui/build --output-on-failure
 | `--bench-csv FILE` | 配合 `--bench-ui`，把每帧 frame,render_ms,swap_ms,globalT,lo,hi,alpha,playing 写入 FILE 供独立复算 |
 | `--screenshot out.ppm` | 保存截图（PPM，可转 PNG 查看） |
 | `--shot-after 秒` | 跑 UI 到点自动截图退出，用于脚本化出图 |
-| `--compare` | 自检：启动即开启两帧对比（A=0, B=最后一帧），便于无交互验证 T8 |
+| `--compare` | 已移除（T21 改着色模式+参考三选） |
 
 操作：左键拖拽平移，滚轮以光标为锚缩放，单击节点点选（点空白取消），
 "适应窗口"按 chip 重新 fit；右侧"控制"面板切图层/着色模式/回放（播放暂停、

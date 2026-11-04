@@ -1182,6 +1182,12 @@ if (sectionHeader("时间轴 / 回放")) {
                 ImGui::EndDisabled();
                 ImGui::EndCombo();
             }
+            if (compareOn_) {
+                const char* refs[] = {"瞬时运动 |pos(hi)-pos(lo)|", "相对 init 结束", "相对输入（第0帧）"};
+                ImGui::Combo("参考", &dispRefMode_, refs, IM_ARRAYSIZE(refs));
+                ImGui::Checkbox("位移箭头", &showVectors_);
+                ImGui::TextDisabled("色表单位：设计坐标单位（一次回放固定）");
+            }
         }
         if (colorMode_ != ColorMode::Kind && !compareOn_) {
             // 连续色表图例 + 数值范围

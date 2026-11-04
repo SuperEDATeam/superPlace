@@ -6,13 +6,9 @@
 #
 # 两种构建模式
 # -----------
-#   独立模式（同伴日常开发用，零算法依赖）：
-#       cmake -S gui -B gui/build && cmake --build gui/build -j
-#       产出 superplace-viz：读 viz bundle 的离线查看器
-#
-#   集成模式（需要实时观察迭代时才用，要求算法侧已构建）：
-#       cmake -S gui -B gui/build -DSUPERPLACE_ROOT=$PWD/build
-#       额外产出 superplace-gui：内嵌引擎、worker 线程实时出帧
+#   cmake -S gui -B gui/build -DCMAKE_PREFIX_PATH=/home/user/.local -DCMAKE_BUILD_TYPE=Release
+#   cmake --build gui/build -j
+#       产出 superplace-viz：读 viz bundle 的离线查看器（始终零算法依赖）
 #
 # 离线编译：若无法联网，先把依赖放到 gui/third_party/<name>，再用
 #   -DFETCHCONTENT_SOURCE_DIR_IMGUI=${CMAKE_SOURCE_DIR}/third_party/imgui
@@ -94,7 +90,9 @@ add_library(viz_core STATIC
   src/viz/summary.cpp
   src/viz/spatial_index.cpp
   src/viz/density.cpp
+  src/viz/density_cache.cpp
   src/viz/frame_map.cpp
+  src/viz/playback.cpp
   src/render/gl_loader.cpp
   src/render/canvas.cpp
   src/app.cpp
@@ -116,70 +114,30 @@ add_executable(viz_tests
   test/test_density.cpp
   test/test_frame_map.cpp
   test/test_scale.cpp
+  test/test_frameview_lifetime.cpp
+  test/test_playback.cpp
+  test/test_prefetch.cpp
+  test/test_density_ref.cpp
+  test/test_density_cache.cpp
   src/viz/bundle_source.cpp
   src/viz/summary.cpp
   src/viz/spatial_index.cpp
   src/viz/density.cpp
+  src/viz/density_cache.cpp
   src/viz/frame_map.cpp
+  src/viz/playback.cpp
 )
 target_include_directories(viz_tests PRIVATE src)
 target_include_directories(viz_tests SYSTEM PRIVATE ${VIZ_JSON_INC})
 target_compile_definitions(viz_tests PRIVATE
   SYNTHETIC_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/sample-data/synthetic")
+target_link_libraries(viz_tests PRIVATE Threads::Threads)
 add_test(NAME viz_tests COMMAND viz_tests)
 
 # ------------------------------------------------------- 目标一：独立查看器
 add_executable(superplace-viz src/main_viz.cpp)
 target_link_libraries(superplace-viz PRIVATE viz_core)
 
-# ------------------------------------- 目标二：集成版（仅在显式给出算法侧时构建）
-#
-# SUPERPLACE_ROOT 指向算法侧的构建目录。给了才会多出 superplace-gui 这个目标，
-# 不给就完全当它不存在——这保证了同伴的日常构建永远不碰算法依赖
-# （FFTW / Eigen / libpng / OpenMP 一个都不需要）。
-if(SUPERPLACE_ROOT)
-  find_library(SUPERPLACE_LIB superplace PATHS ${SUPERPLACE_ROOT} REQUIRED)
-  message(STATUS "集成模式：libsuperplace = ${SUPERPLACE_LIB}")
-
-  # libsuperplace 是静态库，它的传递依赖必须由使用方自己链上。
-  # 这几行正是"集成模式的代价"的具体形态——也正因如此，独立模式才值得保留：
-  # 同伴日常开发完全不需要下面这些东西。
-  find_package(OpenMP REQUIRED)
-  find_package(PNG REQUIRED)
-  find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(FFTW3F IMPORTED_TARGET fftw3f)
-  pkg_check_modules(FFTW3 IMPORTED_TARGET fftw3)
-
-  add_executable(superplace-gui src/main_gui.cpp src/viz/live_source.cpp)
-  target_include_directories(superplace-gui PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
-  target_link_libraries(superplace-gui PRIVATE viz_core ${SUPERPLACE_LIB}
-    OpenMP::OpenMP_CXX PNG::PNG Eigen3::Eigen)
-  if(TARGET PkgConfig::FFTW3F)
-    target_link_libraries(superplace-gui PRIVATE PkgConfig::FFTW3F)
-  elseif(TARGET PkgConfig::FFTW3)
-    target_link_libraries(superplace-gui PRIVATE PkgConfig::FFTW3)
-  endif()
-
-  # T11：实时源四阶段序列的无头测试（不开窗口、不建 GL 上下文）。
-  # 只在集成模式下存在——它要链 libsuperplace 才能真正跑引擎。
-  add_executable(viz_live_tests
-    test/test_live_stages.cpp
-    src/viz/live_source.cpp
-  )
-  target_include_directories(viz_live_tests PRIVATE
-    src ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
-  target_compile_definitions(viz_live_tests PRIVATE
-    TINY_MACROS_AUX="${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/tiny_macros/tiny.aux")
-  target_link_libraries(viz_live_tests PRIVATE ${SUPERPLACE_LIB}
-    OpenMP::OpenMP_CXX PNG::PNG Eigen3::Eigen Threads::Threads)
-  if(TARGET PkgConfig::FFTW3F)
-    target_link_libraries(viz_live_tests PRIVATE PkgConfig::FFTW3F)
-  elseif(TARGET PkgConfig::FFTW3)
-    target_link_libraries(viz_live_tests PRIVATE PkgConfig::FFTW3)
-  endif()
-  add_test(NAME viz_live_tests COMMAND viz_live_tests)
-else()
-  message(STATUS "独立模式：只构建 superplace-viz（不需要任何算法侧依赖）")
-endif()
+# T16：旧实时集成目标（内嵌引擎可执行 + 其无头测试）已整体移除。
+# 本工程始终零算法依赖，不再接受任何指向算法构建目录的变量。
+message(STATUS "独立模式：superplace-viz 不链接任何算法侧依赖（FFTW/Eigen/PNG/OpenMP）")

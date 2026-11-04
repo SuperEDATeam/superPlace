@@ -15,6 +15,21 @@ void testFrameMapRowIterBoundaries();
 void testFrameMapIllegalNoFallback();
 void testFrameMapApproxSkipsIllegal();
 void testScale();
+void testFrameViewLifetime();
+void testPlayback();
+void testPlaybackDegrade();
+void testPlaybackDuplicateT();
+void testPlaybackZeroT();
+void testPlaybackFixes();
+void testPrefetch();
+void testPrefetchShutdown();
+void testPrefetchLRU();
+void testDensityReference();
+void testDrawValidPolicy();
+void testDensityCache();
+void testDensityCacheBudget();
+void testDensityCacheFault();
+void testDensityCacheLifetime();
 
 int main() {
     testCamera();
@@ -31,6 +46,21 @@ int main() {
     testFrameMapIllegalNoFallback();
     testFrameMapApproxSkipsIllegal();
     testScale();
+    testFrameViewLifetime();
+    testPlayback();
+    testPlaybackDegrade();
+    testPlaybackDuplicateT();
+    testPlaybackZeroT();
+    testPlaybackFixes();
+    testPrefetch();
+    testPrefetchShutdown();
+    testPrefetchLRU();
+    testDensityReference();
+    testDrawValidPolicy();
+    testDensityCache();
+    testDensityCacheBudget();
+    testDensityCacheFault();
+    testDensityCacheLifetime();
 
     std::printf("viz_tests: %d 项检查, %d 失败\n", ::viztest::checks(),
                 ::viztest::failures());

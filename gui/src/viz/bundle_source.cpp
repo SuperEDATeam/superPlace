@@ -4,12 +4,17 @@
 // 格式规范见 work_report/06-前端开发方案与接口契约.md §3。
 // 它只用到标准库 + nlohmann/json，不碰算法侧任何头文件。
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <mutex>
 #include <sstream>
+#include <thread>
 
 #include <nlohmann/json.hpp>
 
@@ -80,6 +85,12 @@ constexpr size_t kMaxNodes = 64ull * 1024 * 1024;
 
 class BundleSource final : public IPlacementSource {
 public:
+    ~BundleSource() override {
+        stop_ = true;
+        cv_.notify_all();
+        if (worker_.joinable()) worker_.join();
+    }
+
     const SceneInfo&    scene()    const override { return scene_; }
     const NodeGeometry& geometry() const override { return geom_; }
     const MetricsTable* metrics()  const override { return hasMetrics_ ? &metrics_ : nullptr; }
@@ -87,18 +98,61 @@ public:
     int  frameCount() const override { return static_cast<int>(frames_.size()); }
     const std::string& sourceName() const override { return name_; }
 
+    void prefetch(int center, int direction) override {
+        if (frames_.empty()) return;
+        wantCenter_ = center;
+        wantDir_ = direction;
+        cv_.notify_all();
+        ensureWorker();
+    }
+
     bool frame(int index, FrameView& out) override {
         if (index < 0 || index >= frameCount()) return false;
-        FrameEntry& fe = frames_[static_cast<size_t>(index)];
-        if (fe.data.empty() && !loadFrame(fe)) return false;
-        touch(index);
-        out.x = fe.data.data();
-        out.y = fe.data.data() + scene_.nodeCount;
-        out.count = scene_.nodeCount;
-        out.index = index;
-        out.stage = fe.stage;
-        out.label = fe.label;
+        std::shared_ptr<std::vector<float>> fresh;
+        std::string file;
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            FrameEntry& fe = frames_[static_cast<size_t>(index)];
+            if (fe.data) {                  // 已在缓存：直接给，只做 touch
+                installView(out, fe, index);
+                touch(index);
+                return true;
+            }
+            file = fe.file;                 // 元数据不可变，拷出文件名后锁外读
+        }
+        fresh = readPositions(file);        // 锁外读盘，UI 不被磁盘 IO 阻塞
+        if (!fresh) return false;
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            FrameEntry& fe = frames_[static_cast<size_t>(index)];
+            if (!fe.data) fe.data = std::move(fresh);   // 双检：worker 可能已装好
+            installView(out, fe, index);
+            touch(index);
+        }
         return true;
+    }
+
+    FrameMeta frameInfo(int index) const override {
+        std::lock_guard<std::mutex> lk(mu_);
+        FrameMeta fm;
+        if (index < 0 || index >= frameCount()) return fm;
+        const FrameEntry& fe = frames_[static_cast<size_t>(index)];
+        fm.index = index;
+        fm.stage = fe.stage;
+        fm.label = fe.label;
+        fm.iter = fe.iter;
+        fm.t = fe.t;
+        fm.breakBefore = fe.breakBefore;
+        return fm;
+    }
+
+    bool hasGlobalT() const override { return hadAnyT_; }
+
+    int cachedFrameCount() const override {
+        std::lock_guard<std::mutex> lk(mu_);
+        int n = 0;
+        for (const FrameEntry& fe : frames_) if (fe.data) ++n;
+        return n;
     }
 
     bool open(const fs::path& dir, std::string* err) {
@@ -205,12 +259,26 @@ public:
                 fe.file = safeString(f, "file", "");
                 fe.stage = safeString(f, "stage", "");
                 fe.label = safeString(f, "label", fe.stage);
+                fe.iter = safeInt(f, "iter", -2);
+                fe.breakBefore = safeBool(f, "breakBefore", false);
+                // t 是可选字段；任一带了就视为本 bundle 带真实全局 t。
+                if (f.contains("t") && f["t"].is_number()) {
+                    fe.t = f["t"].get<double>();
+                    hadAnyT_ = true;
+                } else {
+                    fe.t = 0.0;
+                }
                 if (!fe.file.empty()) frames_.push_back(std::move(fe));
             }
         }
         if (frames_.empty()) {
             *err = "bundle 里一帧都没有";
             return false;
+        }
+        // 不带 t 的 bundle（合成样本 / make_viz.py 转换）：退化为按帧序号均匀分布。
+        if (!hadAnyT_) {
+            for (size_t i = 0; i < frames_.size(); ++i)
+                frames_[i].t = static_cast<double>(i);
         }
 
         hasMetrics_ = safeBool(j, "hasMetrics", false) && fs::exists(dir / "metrics.csv");
@@ -232,30 +300,96 @@ public:
 private:
     struct FrameEntry {
         std::string file, stage, label;
-        std::vector<float> data;   ///< 2N：前半 x、后半 y。空表示还没加载
+        int         iter = -1;
+        double      t = 0.0;
+        bool        breakBefore = false;
+        /// 2N：前半 x、后半 y。shared_ptr 共享所有权——LRU 淘汰只放缓存这份引用，
+        /// 任何持有 FrameView 的调用方数据都活着（T15）。空表示尚未加载。
+        std::shared_ptr<std::vector<float>> data;
     };
 
-    bool loadFrame(FrameEntry& fe) {
+    /// 锁外读一个位置文件到独立 shared_ptr（磁盘 IO 不持 mu_）。失败返回 nullptr。
+    /// 一次只缓冲一帧，worker 串行读，避免一次读 3 帧占大块内存。
+    std::shared_ptr<std::vector<float>> readPositions(const std::string& file) {
         const size_t n = static_cast<size_t>(scene_.nodeCount);
-        fe.data.resize(n * 2);
+        auto buf = std::make_shared<std::vector<float>>(n * 2);
         std::string err;
-        if (!readBinary(dir_ / fe.file, fe.data.data(), n * 2 * sizeof(float), &err)) {
-            fe.data.clear();
+        if (!readBinary(dir_ / file, buf->data(), n * 2 * sizeof(float), &err)) {
             std::fprintf(stderr, "[viz] %s\n", err.c_str());
-            return false;
+            return nullptr;
         }
-        return true;
+        // 防御：非有限坐标在 GL 渲染未定义，整帧判为失败（不改 bundle 格式契约）。
+        for (size_t i = 0; i < n * 2; ++i) {
+            if (!std::isfinite((*buf)[i])) {
+                std::fprintf(stderr, "[viz] %s 含非有限坐标，拒绝该帧\n", file.c_str());
+                return nullptr;
+            }
+        }
+        return buf;
+    }
+
+    void installView(FrameView& out, const FrameEntry& fe, int index) {
+        const size_t n = static_cast<size_t>(scene_.nodeCount);
+        out.data = fe.data;                 // 共享所有权：缓存淘汰不影响持有者
+        out.x = fe.data->data();
+        out.y = fe.data->data() + n;
+        out.count = scene_.nodeCount;
+        out.index = index;
+        out.stage = fe.stage;
+        out.label = fe.label;
     }
 
     /// 帧是动画载荷，330k 节点每帧 2.6 MB，全缓存会吃掉几百 MB。
-    /// 只留最近 kCacheFrames 帧，其余按最久未用淘汰。
+    /// 只留最近 kCacheFrames 帧，其余按最久未用淘汰（放掉缓存自己那份引用）。
     void touch(int index) {
         lru_.erase(std::remove(lru_.begin(), lru_.end(), index), lru_.end());
         lru_.push_back(index);
         while (static_cast<int>(lru_.size()) > kCacheFrames) {
-            frames_[static_cast<size_t>(lru_.front())].data = {};
-            frames_[static_cast<size_t>(lru_.front())].data.shrink_to_fit();
+            frames_[static_cast<size_t>(lru_.front())].data.reset();
             lru_.erase(lru_.begin());
+        }
+    }
+
+    // T17：按需启动后台预读线程。只往缓存里放数据，不碰 UI 正持有的帧
+    // （shared_ptr 保活，淘汰只放缓存自己那份引用）。
+    void ensureWorker() {
+        if (workerStarted_.test_and_set()) return;
+        worker_ = std::thread([this] { workerLoop(); });
+    }
+
+    void workerLoop() {
+        for (;;) {
+            int center = 0, dir = 1;
+            {
+                std::unique_lock<std::mutex> lk(mu_);
+                cv_.wait_for(lk, std::chrono::milliseconds(120),
+                             [&] { return stop_.load(); });
+                if (stop_.load()) return;       // 可靠关闭：唤醒后立即退出并 join
+                center = wantCenter_;
+                dir = wantDir_;
+            }
+            // 逐帧处理：每帧在锁内检查是否已加载、拷出文件名，锁外读盘，
+            // 再锁内双检安装并 touch 进 LRU（有界，避免无界增长）。
+            for (int k = 1; k <= 3; ++k) {
+                if (stop_.load()) return;
+                const int idx = center + dir * k;
+                if (idx < 0 || idx >= frameCount()) continue;
+                std::string file;
+                {
+                    std::lock_guard<std::mutex> lk(mu_);
+                    if (frames_[static_cast<size_t>(idx)].data) continue;
+                    file = frames_[static_cast<size_t>(idx)].file;
+                }
+                auto buf = readPositions(file);     // 锁外 IO，不阻塞 UI
+                if (!buf) continue;
+                {
+                    std::lock_guard<std::mutex> lk(mu_);
+                    if (!frames_[static_cast<size_t>(idx)].data) {
+                        frames_[static_cast<size_t>(idx)].data = std::move(buf);
+                        touch(idx);                 // 进 LRU，受 kCacheFrames 约束
+                    }
+                }
+            }
         }
     }
 
@@ -330,8 +464,18 @@ private:
     SummaryTable summary_;
     bool         hasMetrics_ = false;
     bool         hasSummary_ = false;
+    bool         hadAnyT_ = false;
     std::vector<FrameEntry> frames_;
     std::vector<int>        lru_;
+
+    // T17 预读线程：缓存访问统一走 mu_；可靠关闭靠 stop_ + join。
+    mutable std::mutex            mu_;
+    std::condition_variable       cv_;
+    std::thread                   worker_;
+    std::atomic<bool>             stop_{false};
+    std::atomic<int>             wantCenter_{0};
+    std::atomic<int>             wantDir_{1};
+    std::atomic_flag             workerStarted_ = ATOMIC_FLAG_INIT;
 };
 
 }  // namespace

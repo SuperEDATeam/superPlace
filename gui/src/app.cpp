@@ -1012,6 +1012,18 @@ void App::drawCanvasPanel(unsigned dockId) {
     fg->PopClipRect();
 }
 
+// T22：可收起栏目（自绘 -/+ 小按钮，状态存 StateStorage 随 ini 记住）。
+static bool sectionHeader(const char* name) {
+    ImGuiStorage* st = ImGui::GetStateStorage();
+    ImGuiID id = ImGui::GetID(name);
+    bool open = st->GetBool(id, true);
+    char btn[8]; std::snprintf(btn, sizeof(btn), "%c", open ? '-' : '+');
+    if (ImGui::SmallButton(btn)) { open = !open; st->SetBool(id, open); }
+    ImGui::SameLine();
+    ImGui::SeparatorText(name);
+    return open;
+}
+
 void App::drawSidebar() {
     ImGui::Begin("控制");
 
@@ -1034,8 +1046,30 @@ void App::drawSidebar() {
         const SceneInfo& sc = src_->scene();
 
         // 主功能：回放/时间轴放在数据源之后、总览之前（使用者打开即见播放控件）。
-        ImGui::SeparatorText("时间轴 / 回放");
-        {
+        if (sectionHeader("总览"))
+        if (const SummaryTable* sum = src_->summary(); sum && !sum->empty()) {
+            for (const auto& [key, val] : sum->entries) {
+                const char* label = summaryDisplayName(key);
+                const bool warn = summaryIsWarning(key, val);
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      warn ? ImVec4(1.f, 0.2f, 0.2f, 1.f)
+                                           : ImGui::GetStyleColorVec4(ImGuiCol_Text));
+                ImGui::Text("%s", label ? label : key.c_str());
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
+                ImGui::Text("%s", formatSummaryValue(val).c_str());
+                ImGui::PopStyleColor();
+            }
+            if (!sum->durationsMs.empty()) {
+                ImGui::SeparatorText("阶段耗时 (ms)");
+                for (const auto& [k, v] : sum->durationsMs)
+                    ImGui::Text("%-16s %.3f", k.c_str(), v);
+            }
+        } else {
+            ImGui::TextWrapped("该 bundle 不含总览（无 summary.json）。");
+        }
+
+        
+if (sectionHeader("时间轴 / 回放")) {
             const PlaybackController::DisplayState ds = playback_.state();
             double t01 = playback_.playheadGlobal01();
             const double tmin = 0.0, tmax = 1.0;
@@ -1096,29 +1130,7 @@ void App::drawSidebar() {
         }
 
         // ---- T1：总览（summary.json）。缺文件/解析失败显示提示，不崩不空。
-        ImGui::SeparatorText("总览");
-        if (const SummaryTable* sum = src_->summary(); sum && !sum->empty()) {
-            for (const auto& [key, val] : sum->entries) {
-                const char* label = summaryDisplayName(key);
-                const bool warn = summaryIsWarning(key, val);
-                ImGui::PushStyleColor(ImGuiCol_Text,
-                                      warn ? ImVec4(1.f, 0.2f, 0.2f, 1.f)
-                                           : ImGui::GetStyleColorVec4(ImGuiCol_Text));
-                ImGui::Text("%s", label ? label : key.c_str());
-                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
-                ImGui::Text("%s", formatSummaryValue(val).c_str());
-                ImGui::PopStyleColor();
-            }
-            if (!sum->durationsMs.empty()) {
-                ImGui::SeparatorText("阶段耗时 (ms)");
-                for (const auto& [k, v] : sum->durationsMs)
-                    ImGui::Text("%-16s %.3f", k.c_str(), v);
-            }
-        } else {
-            ImGui::TextWrapped("该 bundle 不含总览（无 summary.json）。");
-        }
-
-        ImGui::SeparatorText("图层");
+        if (sectionHeader("图层"))
         for (int k = 0; k < static_cast<int>(Kind::Count); ++k) {
             ImGui::PushID(k);
             const bool wasVisible = canvas_.layerVisible[k];
@@ -1140,7 +1152,7 @@ void App::drawSidebar() {
             ImGui::PopID();
         }
 
-        ImGui::SeparatorText("渲染 / 着色");
+        if (sectionHeader("渲染 / 着色")) {
         // T7：着色模式。net 数依赖 T10 的 nets.bin，当前 bundle 没有，明确禁用。
         {
             const char* cur = colorMode_ == ColorMode::Density ? "按局部密度"
@@ -1191,7 +1203,9 @@ void App::drawSidebar() {
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("全图视角下单元不足 1 像素，按此尺寸放大显示，避免碎成噪点");
 
-        ImGui::SeparatorText("统计");
+                }  // 渲染/着色
+
+ImGui::SeparatorText("统计");
         ImGui::Text("设计        %s", sc.benchmark.c_str());
         ImGui::Text("节点        %s", human(sc.nodeCount).c_str());
         ImGui::Text("core        %.0f x %.0f", sc.core.width(), sc.core.height());

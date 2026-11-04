@@ -29,9 +29,11 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (a == "--no-vsync") {
-            opt.vsync = false;      // 跑帧率基准时用，否则被 vsync 钳在 60
+            opt.vsync = false;
             continue;
         }
+        if (a == "--width" && i + 1 < argc) { opt.width = std::atoi(argv[++i]); continue; }
+        if (a == "--height" && i + 1 < argc) { opt.height = std::atoi(argv[++i]); continue; }
         if (a == "--bench" && i + 1 < argc) {
             opt.benchFrames = std::atoi(argv[++i]);
             continue;
@@ -54,10 +56,6 @@ int main(int argc, char** argv) {
         }
         if (a == "--frame" && i + 1 < argc) {
             opt.startFrame = std::atoi(argv[++i]);
-            continue;
-        }
-        if (a == "--compare") {
-            opt.compareOn = true;   // 自检：启动即开启两帧对比（T8 截图验证）
             continue;
         }
         opt.initialBundle = a;

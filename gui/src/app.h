@@ -174,7 +174,6 @@ private:
 
     // ---- T8：两帧对比与位移向量
     bool compareOn_ = false;
-    int  frameA_ = 0, frameB_ = 1;
     bool showVectors_ = true;
     std::vector<float> dispValues_;
     std::vector<float> densityScratch_;   ///< T6 着色复用缓冲，避免每帧堆分配

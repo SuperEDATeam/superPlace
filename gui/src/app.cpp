@@ -177,8 +177,6 @@ void App::setSource(std::unique_ptr<IPlacementSource> src) {
     prevCanvasW_ = prevCanvasH_ = -1.f;
     colorMode_ = ColorMode::Kind;
     compareOn_ = false;
-    frameA_ = 0;
-    frameB_ = src_ ? std::min(1, src_->frameCount() - 1) : 0;
 
     // T14：从 frameInfo 建回放时间轴（只读元数据，不触发位置 I/O）。
     metas_.clear();
@@ -542,7 +540,6 @@ int App::run() {
     }
     if (src_ && opt_.compareOn && src_->frameCount() >= 2) {
         compareOn_ = true;
-        frameB_ = src_->frameCount() - 1;
         updateContinuousValues();
     }
 
@@ -1252,9 +1249,7 @@ if (sectionHeader("时间轴 / 回放")) {
                     if (ImGui::Selectable(name, colorMode_ == m && !compareOn_)) {
                         colorMode_ = m;
                         if (m == ColorMode::Displacement) {
-                            // 选位移着色等价于开启两帧对比（T8）
                             compareOn_ = true;
-                            frameB_ = src_->frameCount() - 1;
                         } else {
                             compareOn_ = false;
                         }
@@ -1494,45 +1489,6 @@ void App::drawInspectPanel() {
         }
     } else {
         ImGui::TextDisabled("无网表（bundle 不含 nets/）");
-    }
-    ImGui::End();
-}
-
-void App::drawComparePanel() {
-    const ImVec2 vs = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(vs.x * 0.70f, vs.y - 250.f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(vs.x * 0.30f, 250.f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("帧对比");
-    if (!src_ || src_->frameCount() < 2) {
-        ImGui::TextWrapped("至少需要两帧才能对比。");
-        ImGui::End();
-        return;
-    }
-    const int last = src_->frameCount() - 1;
-    frameA_ = std::clamp(frameA_, 0, last);
-    frameB_ = std::clamp(frameB_, 0, last);
-
-    ImGui::Checkbox("启用两帧对比（位移着色 + 向量）", &compareOn_);
-    if (compareOn_) {
-        updateContinuousValues();
-        ImGui::SetNextItemWidth(-1);
-        ImGui::SliderInt("帧 A", &frameA_, 0, last, "%d");
-        ImGui::SetNextItemWidth(-1);
-        ImGui::SliderInt("帧 B", &frameB_, 0, last, "%d");
-        ImGui::Checkbox("显示位移向量", &showVectors_);
-
-        FrameView fa, fb;
-        if (src_->frame(frameA_, fa) && src_->frame(frameB_, fb)) {
-            double mx = 0., sum = 0.;
-            const int n = src_->scene().nodeCount;
-            for (int i = 0; i < n; ++i) {
-                const double d = std::hypot(fb.x[i] - fa.x[i], fb.y[i] - fa.y[i]);
-                mx = std::max(mx, d);
-                sum += d;
-            }
-            ImGui::Text("最大位移  %.3f", mx);
-            ImGui::Text("平均位移  %.3f", sum / n);
-        }
     }
     ImGui::End();
 }

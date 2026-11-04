@@ -904,6 +904,24 @@ void App::drawCanvasPanel(unsigned dockId) {
             size_t l = std::strlen(buf);
             std::snprintf(buf + l, sizeof(buf) - l, "%s", selectedNameBuf_.c_str());
         }
+        // T20：降级热力图提示
+        if (lodActive_)
+            fg->AddText(ImVec2(canvasX_ + 10, canvasY_ + 30),
+                        IM_COL32(255, 160, 0, 255),
+                        "热力图模式：图层 / 着色在此模式下不生效，放大后恢复");
+        // T20：连续色表色条（viridis 近似，右下角）
+        if (colorMode_ != ColorMode::Kind || compareOn_) {
+            const float cw = 180.f, ch = 8.f;
+            const float cx0 = canvasX_ + canvasW_ - cw - 14, cy0 = canvasY_ + canvasH_ - 14;
+            for (int i = 0; i < 24; ++i) {
+                float t = i / 23.f;
+                ImU32 col = IM_COL32((int)(40 + t * 200), (int)(10 + t * 180), (int)(140 - t * 100), 255);
+                fg->AddRectFilled({cx0 + cw * t, cy0}, {cx0 + cw * (i + 1) / 23.f, cy0 + ch}, col);
+            }
+            char cb[48];
+            std::snprintf(cb, sizeof(cb), "%.3g ~ %.3g  (设计坐标单位)", lastValMin_, lastValMax_);
+            fg->AddText({cx0, cy0 - 14}, IM_COL32(90, 90, 90, 255), cb);
+        }
         fg->AddText(ImVec2(canvasX_ + 10, canvasY_ + 10),
                     IM_COL32(90, 90, 90, 255), buf);
 

@@ -18,6 +18,7 @@
 
 #include "render/scale_tick.h"
 #include "viz/summary.h"
+#include "viz/nets.h"
 
 namespace viz {
 namespace {
@@ -994,6 +995,26 @@ void App::drawCanvasPanel(unsigned dockId) {
                 std::snprintf(sb, sizeof(sb), "  选中: %s", g.name[selected_].c_str());
                 selectedNameBuf_ = sb;
             }
+            // T10：net 星形高亮（引脚→net 引脚位置，跳过度数>阈值的 net）。
+            if (const NetList* nl = src_->nets()) {
+                std::vector<float> off;
+                nl->pinOffsetForFrame(ds.statFrame, off, bundlePath_);
+                auto p0 = nl->nodePinStart[selected_], p1 = nl->nodePinStart[selected_ + 1];
+                for (int pi = p0; pi < p1; ++pi) {
+                    int pin = nl->nodePins[pi];
+                    int net = nl->pinNet[pin];
+                    if (net < 0) continue;
+                    int deg = nl->netStart[net + 1] - nl->netStart[net];
+                    if (deg > netDegThreshold_) continue;
+                    float ox = 0, oy = 0;
+                    if ((int)off.size() >= pin * 2 + 2) { ox = off[pin * 2]; oy = off[pin * 2 + 1]; }
+                    float sx, sy;
+                    cam_.worldToScreen(cx + ox, cy + oy, canvasW_, canvasH_, &sx, &sy);
+                    fg->AddLine({canvasX_ + (x0 + x1) * 0.5f, canvasY_ + (y0 + y1) * 0.5f},
+                                {canvasX_ + sx, canvasY_ + sy},
+                                IM_COL32(120, 180, 255, 200), 1.2f);
+                }
+            }
         }
     }
 
@@ -1218,6 +1239,8 @@ if (sectionHeader("时间轴 / 回放")) {
                 if (!hasNets) ImGui::TextDisabled("bundle 不含 nets/：网表功能禁用");
                 ImGui::EndCombo();
             }
+            if (src_->nets())
+                ImGui::SliderInt("net 高亮度数阈值", &netDegThreshold_, 10, 10000);
             if (compareOn_) {
                 const char* refs[] = {"瞬时运动 |pos(hi)-pos(lo)|", "相对 init 结束", "相对输入（第0帧）"};
                 ImGui::Combo("参考", &dispRefMode_, refs, IM_ARRAYSIZE(refs));
@@ -1422,6 +1445,24 @@ void App::drawInspectPanel() {
         const int r = static_cast<int>((sy[selected_] - chip.ly) /
                                        (chip.height() / 128.f));
         ImGui::Text("bin       (%d, %d)", c, r);
+    }
+    // T10：网表信息（引脚数/所连 net）。
+    if (const NetList* nl = src_->nets()) {
+        int p0 = nl->nodePinStart[selected_], p1 = nl->nodePinStart[selected_ + 1];
+        ImGui::SeparatorText("网表");
+        ImGui::Text("引脚数    %d", p1 - p0);
+        for (int pi = p0; pi < p1; ++pi) {
+            int pin = nl->nodePins[pi];
+            int net = nl->pinNet[pin];
+            if (net < 0) continue;
+            int deg = nl->netStart[net + 1] - nl->netStart[net];
+            const char* nm = (nl->hasNames && net < (int)nl->netNames.size())
+                                 ? nl->netNames[net].c_str() : "—";
+            float w = nl->hasWeights && net < (int)nl->netWeight.size() ? nl->netWeight[net] : 1.f;
+            ImGui::BulletText("%s  度=%d  权重=%.2f", nm, deg, w);
+        }
+    } else {
+        ImGui::TextDisabled("无网表（bundle 不含 nets/）");
     }
     ImGui::End();
 }

@@ -169,6 +169,7 @@ private:
     // ---- T7：着色模式（net 数因 T10 无 nets.bin 而禁用）
     ColorMode colorMode_ = ColorMode::Kind;
     int  dispRefMode_ = 0;   ///< T21 位移参考：0瞬时|hi-lo|,1相对init结束,2相对输入第0帧
+    int  netDegThreshold_ = 100;  ///< T10 高亮跳过度数大于该值的 net
     float lastValMin_ = 0.f, lastValMax_ = 1.f;   ///< 连续色表当前范围（图例用）
 
     // ---- T8：两帧对比与位移向量

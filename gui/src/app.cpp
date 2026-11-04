@@ -1068,7 +1068,7 @@ void App::drawSidebar() {
             ImGui::TextWrapped("该 bundle 不含总览（无 summary.json）。");
         }
 
-        
+
 if (sectionHeader("时间轴 / 回放")) {
             const PlaybackController::DisplayState ds = playback_.state();
             double t01 = playback_.playheadGlobal01();

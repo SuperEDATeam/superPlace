@@ -827,17 +827,24 @@ void App::drawCanvasPanel(unsigned dockId) {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 lo(canvasX_, canvasY_);
     const ImVec2 hi(canvasX_ + canvasW_, canvasY_ + canvasH_);
-    // 只有鼠标落在中央节点上、且没有任何 ImGui 控件要抢输入时，才算在操作画布
-    const bool overCanvas = ImGui::IsMouseHoveringRect(lo, hi) && !io.WantCaptureMouse;
-
+    // T18：clip=false 不受隐形 Debug##Default 窗口裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
+    const bool mouseInCanvas = ImGui::IsMouseHoveringRect(lo, hi, /*clip=*/false);
+    const bool overCanvas = mouseInCanvas &&
+        !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+    // 拖拽平移：只有「按下时就在画布上」才允许，避免从面板拖入误平移。
+    static bool panning = false;
     if (overCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         downX_ = io.MousePos.x;
         downY_ = io.MousePos.y;
+        panning = true;
     }
-    if (overCanvas && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) panning = false;
+    if (panning && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         cam_.cx -= io.MouseDelta.x / cam_.scale;
-        cam_.cy += io.MouseDelta.y / cam_.scale;   // 屏幕 y 向下，设计 y 向上
+        cam_.cy += io.MouseDelta.y / cam_.scale;
     }
+    // F 键 = 适应窗口
+    if (mouseInCanvas && ImGui::IsKeyPressed(ImGuiKey_F)) needFit_ = true;
     // T4：左键【单击】（非拖拽）点选；点空白处取消选中。
     if (overCanvas && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         const float moved = std::hypot(io.MousePos.x - downX_, io.MousePos.y - downY_);
@@ -852,7 +859,7 @@ void App::drawCanvasPanel(unsigned dockId) {
     }
     if (overCanvas && io.MouseWheel != 0.f) {
         cam_.zoomAt(io.MousePos.x - canvasX_, io.MousePos.y - canvasY_, canvasW_, canvasH_,
-                    std::exp(io.MouseWheel * 0.18f));
+                    std::exp(io.MouseWheel * 0.25f));
     }
 
     ImDrawList* fg = ImGui::GetForegroundDrawList();

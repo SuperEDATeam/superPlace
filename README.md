@@ -93,6 +93,18 @@ python3 scripts/make_gif.py results/adaptec1
 > 同时跑两个布局任务时请把线程分开（如各加 `--threads 16`）。OpenMP 线程数超过核数时
 > 会在屏障处空转，实测 newblue1 两个任务并发时各自慢了十几倍。
 
+## 查看布局（前端）
+
+```bash
+scripts/viz.sh                    # 打开仓库自带的合成样本
+scripts/viz.sh ispd2006/newblue1  # 没录过就先录制（约 45 秒），再打开，可拖进度条看全过程
+scripts/viz.sh --help             # 全部用法
+```
+
+脚本会自动增量构建前端、在 WSL2 下打开显卡加速，在任何目录下运行都可以。
+录制结果存在 `results/play/<套件>/<设计>/viz/`，第二次打开同一设计直接复用。
+前端的设计与开发说明见 [06-前端开发方案与接口契约](work_report/06-前端开发方案与接口契约.md)。
+
 ## 测试
 
 ```bash

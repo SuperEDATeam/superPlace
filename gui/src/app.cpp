@@ -563,10 +563,11 @@ int App::run() {
             const int vh = static_cast<int>(canvasH_ * dpr);
             glViewport(vx, vy, vw, vh);
 
-            // T6 LOD：行高在屏幕上不足阈值像素时，远景切热力图、不画真实矩形。
+            // T20：默认画真实矩形（33万矩形≈1.8ms 不需 LOD）。仅当节点>100万 且行高<1px
+            // 时自动降级为热力图；heatmapOverlay_ 是可选叠加图层（默认关）。
             const float rowPx = src_->scene().rowHeight > 0.f
                                     ? src_->scene().rowHeight * cam_.scale : 0.f;
-            lodActive_ = lodAuto_ && rowPx > 0.f && rowPx < 15.f;
+            lodActive_ = src_->scene().nodeCount > 1000000 && rowPx > 0.f && rowPx < 1.f;
 
             const auto t0 = std::chrono::steady_clock::now();
             // 密度场重建后才重新上传纹理，静止视角不重复 GL 上传。
@@ -590,7 +591,7 @@ int App::run() {
                     gpuPositionsDirty_ = false;
                 }
                 if (viz::shouldDrawPositions(positionsValid_)) {
-                    if (heatmapOverlay_) uploadHm(0.28f);
+                    if (heatmapOverlay_) uploadHm(heatmapAlpha_);
                     canvas_.draw(cam_, vw, vh);
                 }
             }
@@ -1153,10 +1154,13 @@ void App::drawSidebar() {
         } else if (compareOn_) {
             ImGui::Text("位移范围 %.3g ~ %.3g", lastValMin_, lastValMax_);
         }
-        ImGui::Checkbox("近景叠加密度热图", &heatmapOverlay_);
-        ImGui::Checkbox("远景自动 LOD 热力图", &lodAuto_);
+        ImGui::Checkbox("热力图图层", &heatmapOverlay_);
+        if (heatmapOverlay_)
+            ImGui::SetNextItemWidth(120), ImGui::SliderFloat("透明度", &heatmapAlpha_, 0.05f, 1.f, "%.2f");
         ImGui::SetNextItemWidth(120);
-        ImGui::SliderFloat("最小像素", &canvas_.minPixelSize, 0.5f, 4.f, "%.1f px");
+        ImGui::SliderFloat("最小显示尺寸（像素）", &canvas_.minPixelSize, 0.5f, 4.f, "%.1f px");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("全图视角下单元不足 1 像素，按此尺寸放大显示，避免碎成噪点");
 
         ImGui::SeparatorText("统计");
         ImGui::Text("设计        %s", sc.benchmark.c_str());
@@ -1167,7 +1171,7 @@ void App::drawSidebar() {
         ImGui::Text("绘制        %.2f ms", drawMs_);
         ImGui::Text("位置上传    %.2f ms", canvas_.lastUploadMs());
         ImGui::Text("UI          %.1f fps", ImGui::GetIO().Framerate);
-        if (lodAuto_) ImGui::Text("LOD         %s", lodActive_ ? "热力图" : "真实矩形");
+        if (lodActive_) ImGui::TextUnformatted("LOD 热力图模式（放大后恢复矩形）");
     }
 
     ImGui::Separator();

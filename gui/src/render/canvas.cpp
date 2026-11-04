@@ -340,7 +340,7 @@ void Canvas::drawHeatmapOverlay(const Camera& cam, int viewW, int viewH,
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(hmProg_);
     glBindVertexArray(hmVao_);
-    glActiveTexture(0);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, hmTex_);
     glUniform1i(hmUTex_, 0);
     glUniform4f(hmUView_, cam.cx, cam.cy, cam.scale, 0.f);

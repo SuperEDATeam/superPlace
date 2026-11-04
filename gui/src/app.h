@@ -161,9 +161,9 @@ private:
     const float* lastPy_ = nullptr;
     int lastN_ = 0;
     unsigned long lastHmGen_ = 0;  ///< 已上传纹理对应的密度场版本，避免每帧重复上传
-    bool heatmapOverlay_ = true;   ///< 近景是否叠加半透明热力图
-    bool lodAuto_ = true;          ///< 远景自动切热力图
-    bool lodActive_ = false;       ///< 本帧是否处于 LOD（由阈值算出）
+    bool heatmapOverlay_ = false;  ///< T20：热力图叠加图层（默认关）
+    float heatmapAlpha_ = 0.35f;   ///< 热力图叠加透明度
+    bool lodActive_ = false;       ///< 本帧是否处于自动降级热力图（节点>100万且行高<1px）
 
     // ---- T7：着色模式（net 数因 T10 无 nets.bin 而禁用）
     ColorMode colorMode_ = ColorMode::Kind;

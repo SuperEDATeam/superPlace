@@ -233,7 +233,7 @@ bool App::initWindow() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    window_ = glfwCreateWindow(opt_.width, opt_.height, "superPlace 布局查看器", nullptr, nullptr);
+    window_ = glfwCreateWindow(opt_.width, opt_.height, "superPlace Viewer", nullptr, nullptr);
     if (!window_) {
         std::fprintf(stderr,
                      "创建窗口失败。请确认已装 GLFW/Mesa 开发包且具备可用显示（DISPLAY）。\n");
@@ -1041,14 +1041,14 @@ void App::drawSidebar() {
             if (ImGui::Button(playback_.playing() ? "暂停" : "播放"))
                 playback_.toggle();
             ImGui::SameLine();
-            if (ImGui::Button("|◀ 关键帧")) playback_.prevKeyframe();
+            if (ImGui::Button("|< keyframe")) playback_.prevKeyframe();
             ImGui::SameLine();
-            if (ImGui::Button("关键帧 ▶|")) playback_.nextKeyframe();
+            if (ImGui::Button("keyframe >|")) playback_.nextKeyframe();
             ImGui::SameLine();
             if (ImGui::Button("适应窗口")) needFit_ = true;
-            if (ImGui::Button("|◀ 阶段")) playback_.prevStage();
+            if (ImGui::Button("|< stage")) playback_.prevStage();
             ImGui::SameLine();
-            if (ImGui::Button("阶段 ▶|")) playback_.nextStage();
+            if (ImGui::Button("stage >|")) playback_.nextStage();
             ImGui::SameLine();
             ImGui::Checkbox("循环", &loopOn_);
             playback_.setLoop(loopOn_);

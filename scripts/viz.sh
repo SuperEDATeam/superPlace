@@ -33,7 +33,8 @@ while [[ $# -gt 0 ]]; do
         -*)
             # 查看器参数；带值的那几个要连同它的值一起转交
             case "$1" in
-                --frame|--bench|--screenshot|--shot-after) PASS+=("$1" "${2:?$1 需要一个值}"); shift 2 ;;
+                --frame|--bench|--bench-ui|--bench-csv|--screenshot|--shot-after)
+                    PASS+=("$1" "${2:?$1 需要一个值}"); shift 2 ;;
                 *) PASS+=("$1"); shift ;;
             esac ;;
         *)

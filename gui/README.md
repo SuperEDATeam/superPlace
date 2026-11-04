@@ -10,6 +10,36 @@
 > [work_report/06-前端开发方案与接口契约.md](../work_report/06-前端开发方案与接口契约.md)。
 > **接手前请先读那一份**，尤其是 **§8.2 当前实现状态**。
 
+## 一条命令启动（推荐）
+
+装好下文「装依赖」里的系统包后，在仓库任意位置运行：
+
+```bash
+scripts/viz.sh                       # 打开仓库自带的合成样本
+scripts/viz.sh newblue1              # 按设计名查找；没录过就先用 CLI 录制（约 45 秒）再打开
+scripts/viz.sh ispd2006/newblue1     # 同名设计有多份时，用 套件/设计 指定
+scripts/viz.sh path/to/design.aux    # 指定 .aux 文件
+scripts/viz.sh path/to/viz           # 直接打开一个已有的 bundle 目录
+```
+
+脚本会自动完成：增量构建 `superplace-viz`（已是最新则几乎不花时间）；在 WSL2 下设置
+`GALLIUM_DRIVER=d3d12`（原生 Linux 不设）；指定设计时若尚未录制，先构建算法侧
+`superplace-cli` 并以 `--frame-stride` 录下全过程。录制结果放在
+`results/play/<套件>/<设计>/viz/`，下次直接复用。
+
+| 脚本参数 | 用途 |
+| --- | --- |
+| `--rerecord` | 即使录过也重新录（算法代码改过之后用） |
+| `--stride N` | 每 N 轮迭代录一帧，默认 10 |
+| 其余参数 | 原样交给查看器，例如 `--frame -1`、`--compare`、`--bench-ui 800`（见下文参数表） |
+
+> - 只看合成样本或现成 bundle 时**只需要前端依赖**；按设计名 / `.aux` 打开且需要录制时，
+>   还要能构建算法侧（FFTW、Eigen、OpenMP 等，见根目录 `README.md`），并需要
+>   `benchmarks/` 下有对应设计（该目录不入库，需自行放置）。
+> - GLFW 装在非标准前缀（如 `~/.local`）时，先 `export CMAKE_PREFIX_PATH=$HOME/.local`
+>   和 `LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH` 再运行脚本。
+> - 想手动构建、调试或跑单测，见下文「构建、运行与测试」。
+
 ## 已实现（A 类 T1–T8、T13、T14、T15、T17）
 
 独立版 `superplace-viz` 已落地以下能力（均在 `gui/` 内，不依赖算法侧库）：
@@ -105,7 +135,8 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 
 **测试数据**：上游 `test_data/` 已随仓库入库（以仓库实际内容为准）；`results/`、截图/日志在
 `.gitignore` 里，不提交。内置合成样本 `sample-data/synthetic`（14,681 节点 / 40 帧）
-覆盖全部节点形态。真实 bundle（如 newblue1）由导出侧提供；离线生成走 `scripts/make_viz.py --aux ...`。
+覆盖全部节点形态。真实设计的完整过程由 CLI 录制（`superplace-cli ... --frame-stride 10`，
+或直接 `scripts/viz.sh <设计名>`）；`scripts/make_viz.py --aux ...` 只能拿到各阶段结束时的 `.pl`（每个设计 3~4 帧），看不到中间过程。
 
 | 路径 | 职责 |
 | --- | --- |

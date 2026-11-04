@@ -33,6 +33,8 @@ public:
     /// @param visible 长度为 Kind::Count 的可见掩码；nullptr 表示全部可见。
     ///                关闭的图层不参与命中，也不会挡住可见的大物体。
     int pick(float wx, float wy, const bool* visible = nullptr) const;
+    /// T24：屏幕容差 pick——先精确，再在 tolWorld（=5px/scale）内取最近单元。
+    int pickTolerant(float wx, float wy, float tolWorld, const bool* visible = nullptr) const;
 
     bool valid() const { return cols_ > 0 && rows_ > 0; }
 

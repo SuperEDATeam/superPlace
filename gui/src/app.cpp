@@ -853,8 +853,8 @@ void App::drawCanvasPanel(unsigned dockId) {
             cam_.screenToWorld(io.MousePos.x - canvasX_, io.MousePos.y - canvasY_,
                                canvasW_, canvasH_, &wx, &wy);
             rebuildIndexIfDirty();
-            // R1-4：关闭的图层不参与命中（掩码由画布图层开关提供）。
-            selected_ = pickIndex_.pick(wx, wy, canvas_.layerVisible);
+            // T24：5px 屏幕容差（5/scale），先真实几何再容差内最近。
+            selected_ = pickIndex_.pickTolerant(wx, wy, 5.f / cam_.scale, canvas_.layerVisible);
         }
     }
     if (overCanvas && io.MouseWheel != 0.f) {

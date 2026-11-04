@@ -111,6 +111,35 @@ int SpatialIndex::pick(float wx, float wy, const bool* visible) const {
     return best;
 }
 
+int SpatialIndex::pickTolerant(float wx, float wy, float tolWorld,
+                                const bool* visible) const {
+    int exact = pick(wx, wy, visible);
+    if (exact >= 0) return exact;
+    if (!valid() || tolWorld <= 0.f) return -1;
+    // 在 tolWorld 半径内找最近单元（中心点距离）。
+    const int cr = static_cast<int>(std::ceil(tolWorld / cellW_)) + 1;
+    const int rr = static_cast<int>((wy - chip_.ly) / cellH_);
+    const int cc = static_cast<int>((wx - chip_.lx) / cellW_);
+    int best = -1; float bestD2 = tolWorld * tolWorld;
+    for (int dr = -cr; dr <= cr; ++dr) {
+        const int r = rr + dr;
+        if (r < 0 || r >= rows_) continue;
+        for (int dc = -cr; dc <= cr; ++dc) {
+            const int c = cc + dc;
+            if (c < 0 || c >= cols_) continue;
+            const int b = r * cols_ + c;
+            for (int p = start_[b]; p < start_[b + 1]; ++p) {
+                const size_t k = items_[p];
+                if (visible && !visible[kd_[k]]) continue;
+                const float dx = wx - cx_[k], dy = wy - cy_[k];
+                const float d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) { bestD2 = d2; best = orig_[k]; }
+            }
+        }
+    }
+    return best;
+}
+
 int SpatialIndex::bucketCount(int col, int row) const {
     if (col < 0 || col >= cols_ || row < 0 || row >= rows_) return 0;
     const int b = row * cols_ + col;

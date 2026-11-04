@@ -787,7 +787,6 @@ void App::drawUi() {
     drawSidebar();
     drawMetricsPanel();
     drawInspectPanel();
-    drawComparePanel();
 }
 
 void App::drawCanvasPanel(unsigned dockId) {

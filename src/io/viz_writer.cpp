@@ -58,6 +58,89 @@ void VizBundleWriter::open(const std::string& dir, const std::string& benchmark,
     frames_.clear();
     skipped_ = 0;
     spentMs_ = 0.0;
+    writeNets(db);
+}
+
+void VizBundleWriter::writeNets(const PlaceDB& db) {
+    static_assert(sizeof(int) == sizeof(int32_t), "nets/*.bin 按 int32 原样写出引擎的 int 数组");
+    hasNets_ = hasNetNames_ = hasNetWeights_ = false;
+    offsetUpdates_.clear();
+    numNets_ = db.numNets;
+    numPins_ = db.numPins;
+    const size_t M = static_cast<size_t>(numNets_), P = static_cast<size_t>(numPins_);
+    const bool complete = numPins_ > 0 && db.net2pin_start.size() == M + 1 &&
+                          db.flat_net2pin.size() == P && db.pin2node.size() == P &&
+                          db.pin_offset_x.size() == P && db.pin_offset_y.size() == P;
+    if (!complete) return;
+    for (const int node : db.pin2node) {
+        if (node < 0 || node >= n_) {
+            SP_WARN("viz bundle: 有引脚落在真实节点之外（node=%d），不写网表", node);
+            return;
+        }
+    }
+
+    const fs::path nd = fs::path(dir_) / "nets";
+    fs::create_directories(nd);
+    // 三个整型数组与引擎内存逐字节相同，直接写
+    writeBinary(nd / "net_start.bin", db.net2pin_start.data(), (M + 1) * sizeof(int32_t));
+    writeBinary(nd / "net_pins.bin", db.flat_net2pin.data(), P * sizeof(int32_t));
+    writeBinary(nd / "pin_node.bin", db.pin2node.data(), P * sizeof(int32_t));
+
+    std::vector<float> off(2 * P);
+    for (size_t p = 0; p < P; ++p) {
+        off[2 * p] = db.pin_offset_x[p];
+        off[2 * p + 1] = db.pin_offset_y[p];
+    }
+    writeBinary(nd / "pin_offset.bin", off.data(), off.size() * sizeof(float));
+    pinOffX_ = db.pin_offset_x;
+    pinOffY_ = db.pin_offset_y;
+
+    if (db.net_name.size() == M) {
+        std::ofstream out(nd / "net_names.txt");
+        for (const std::string& s : db.net_name) out << s << '\n';
+        hasNetNames_ = true;
+    }
+    if (db.net_weight.size() == M) {
+        for (const float w : db.net_weight) {
+            if (w != 1.f) { hasNetWeights_ = true; break; }
+        }
+        if (hasNetWeights_)
+            writeBinary(nd / "net_weight.bin", db.net_weight.data(), M * sizeof(float));
+    }
+    hasNets_ = true;
+}
+
+bool VizBundleWriter::writeOffsetUpdate(const PlaceDB& db, int frameIndex) {
+    if (!hasNets_) return false;
+    const size_t P = pinOffX_.size();
+    if (db.pin_offset_x.size() != P || db.pin_offset_y.size() != P) return false;
+    if (std::memcmp(pinOffX_.data(), db.pin_offset_x.data(), P * sizeof(float)) == 0 &&
+        std::memcmp(pinOffY_.data(), db.pin_offset_y.data(), P * sizeof(float)) == 0)
+        return false;
+
+    // 记录格式 struct { int32 pin; float32 dx; float32 dy; }，12 字节无填充
+    std::vector<unsigned char> rec;
+    int count = 0;
+    for (size_t p = 0; p < P; ++p) {
+        const float dx = db.pin_offset_x[p], dy = db.pin_offset_y[p];
+        if (std::memcmp(&dx, &pinOffX_[p], sizeof(float)) == 0 &&
+            std::memcmp(&dy, &pinOffY_[p], sizeof(float)) == 0)
+            continue;
+        const int32_t pin = static_cast<int32_t>(p);
+        unsigned char buf[12];
+        std::memcpy(buf, &pin, 4);
+        std::memcpy(buf + 4, &dx, 4);
+        std::memcpy(buf + 8, &dy, 4);
+        rec.insert(rec.end(), buf, buf + 12);
+        pinOffX_[p] = dx;
+        pinOffY_[p] = dy;
+        ++count;
+    }
+    char name[48];
+    std::snprintf(name, sizeof(name), "nets/pin_offset_f%04d.bin", frameIndex);
+    writeBinary(fs::path(dir_) / name, rec.data(), rec.size());
+    offsetUpdates_.push_back({frameIndex, name, count});
+    return true;
 }
 
 void VizBundleWriter::append(const PlaceDB& db, const FrameMark& m) {
@@ -73,9 +156,15 @@ void VizBundleWriter::append(const PlaceDB& db, const FrameMark& m) {
     } spent{spentMs_, t0};
     const size_t n = static_cast<size_t>(n_);
 
+    // 引脚偏移的变化必须挂在一个真实写出的帧上，所以先于去重判断。
+    // 前端约定"带偏移更新的帧一定是断点"，插值因此不会跨过一次偏移变化。
+    FrameMark mark = m;
+    const bool offsetChanged = writeOffsetUpdate(db, frameCount());
+    if (offsetChanged) mark.breakBefore = true;
+
     // PlaceDB 是 SoA：node_x 与 node_y 各自连续，帧格式恰好是"先 x[N] 再 y[N]"，
     // 所以比较与写盘都直接在 db 的内存上做，不需要拼一份中间数组。
-    if (last_.size() == 2 * n &&
+    if (!offsetChanged && last_.size() == 2 * n &&
         std::memcmp(last_.data(), db.node_x.data(), n * sizeof(float)) == 0 &&
         std::memcmp(last_.data() + n, db.node_y.data(), n * sizeof(float)) == 0) {
         ++skipped_;
@@ -95,7 +184,7 @@ void VizBundleWriter::append(const PlaceDB& db, const FrameMark& m) {
     std::memcpy(last_.data(), db.node_x.data(), n * sizeof(float));
     std::memcpy(last_.data() + n, db.node_y.data(), n * sizeof(float));
 
-    frames_.push_back({name, m});
+    frames_.push_back({name, mark});
     writeScene();
 }
 
@@ -133,6 +222,14 @@ void VizBundleWriter::writeScene() const {
     j["hasNames"] = true;
     j["hasMetrics"] = hasMetrics_;
     j["hasSummary"] = hasSummary_;
+    if (hasNets_) {
+        auto ups = nlohmann::ordered_json::array();
+        for (const OffsetUpdate& u : offsetUpdates_)
+            ups.push_back({{"frame", u.frame}, {"file", u.file}, {"count", u.count}});
+        j["nets"] = {{"netCount", numNets_},     {"pinCount", numPins_},
+                     {"hasNames", hasNetNames_}, {"hasWeights", hasNetWeights_},
+                     {"offsetUpdates", std::move(ups)}};
+    }
 
     auto arr = nlohmann::ordered_json::array();
     for (const Entry& e : frames_) {

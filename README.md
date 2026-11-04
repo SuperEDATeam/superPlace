@@ -127,7 +127,7 @@ cd build && ctest --output-on-failure
 | `test_density` | 密度缩放规则、local smoothing、τ、电荷守恒 |
 | `test_filler` | filler 面积配平、四舍五入、负面积保护 |
 | `test_macro_sa` | 宏合法化：零重叠、行对齐、增量线长与全量一致、确定性 |
-| `test_viz_writer` | 前端回放 bundle 写出器：只写真实节点、重复帧跳过、标志位在开跑前取定 |
+| `test_viz_writer` | 前端回放 bundle 写出器：只写真实节点、重复帧跳过、标志位在开跑前取定、网表与引脚偏移更新 |
 | `test_eplace` | mGP 主循环：密度项符号、已达标不动、停滞保护、cGP 宏冻结、确定性 |
 
 ## 目录

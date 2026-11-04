@@ -161,7 +161,8 @@
     {
       "file": "frames/f0030.bin",
       "stage": "cGP",
-      "label": "cGP iter 300"
+      "label": "cGP iter 300（模拟 mLG：翻转 3 个宏）",
+      "breakBefore": true
     },
     {
       "file": "frames/f0031.bin",
@@ -210,6 +211,19 @@
     }
   ],
   "nodeCount": 14681,
+  "nets": {
+    "netCount": 4284,
+    "pinCount": 18865,
+    "hasNames": true,
+    "hasWeights": true,
+    "offsetUpdates": [
+      {
+        "frame": 30,
+        "file": "nets/pin_offset_f0030.bin",
+        "count": 18
+      }
+    ]
+  },
   "core": {
     "lx": 0.0,
     "ly": 0.0,

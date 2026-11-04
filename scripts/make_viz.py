@@ -34,6 +34,7 @@ results 目录补出一个静态 bundle。两种来源的节点顺序不同（CL
 from __future__ import annotations
 
 import argparse
+import array
 import json
 import math
 import random
@@ -169,6 +170,40 @@ class Bundle:
         buf += struct.pack(f"<{len(ys)}f", *ys)
         (self.out / name).write_bytes(bytes(buf))
         self.scene["frames"].append({"file": name, **meta})
+
+    def write_nets(self, net_start: list[int], net_pins: list[int], pin_node: list[int],
+                   pin_off: list[tuple[float, float]], names: list[str] | None,
+                   weights: list[float] | None) -> None:
+        """网表 nets/（§3.9）。与 CLI 写出器同一格式：引脚下标、节点下标原样保存。"""
+        nd = self.out / "nets"
+        nd.mkdir(exist_ok=True)
+        (nd / "net_start.bin").write_bytes(struct.pack(f"<{len(net_start)}i", *net_start))
+        (nd / "net_pins.bin").write_bytes(struct.pack(f"<{len(net_pins)}i", *net_pins))
+        (nd / "pin_node.bin").write_bytes(struct.pack(f"<{len(pin_node)}i", *pin_node))
+        flat = [v for dxdy in pin_off for v in dxdy]
+        (nd / "pin_offset.bin").write_bytes(struct.pack(f"<{len(flat)}f", *flat))
+        if names is not None:
+            (nd / "net_names.txt").write_text("".join(s + "\n" for s in names))
+        has_w = weights is not None and any(w != 1.0 for w in weights)
+        if has_w:
+            (nd / "net_weight.bin").write_bytes(struct.pack(f"<{len(weights)}f", *weights))
+        self.scene["nets"] = {
+            "netCount": len(net_start) - 1,
+            "pinCount": len(pin_node),
+            "hasNames": names is not None,
+            "hasWeights": has_w,
+            "offsetUpdates": [],
+        }
+
+    def add_offset_update(self, frame: int, records: list[tuple[int, float, float]]) -> None:
+        """从帧 frame（含）起，这些引脚改用新的绝对偏移。该帧必须是 breakBefore。"""
+        name = f"nets/pin_offset_f{frame:04d}.bin"
+        buf = bytearray()
+        for pin, dx, dy in records:
+            buf += struct.pack("<iff", pin, dx, dy)
+        (self.out / name).write_bytes(bytes(buf))
+        self.scene["nets"]["offsetUpdates"].append(
+            {"frame": frame, "file": name, "count": len(records)})
 
     def finish(self, **extra) -> None:
         self.scene.update(extra)
@@ -323,6 +358,9 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
         targets.append((rng.uniform(core["lx"] + w / 2, core["hx"] - w / 2),
                         rng.uniform(core["ly"] + h / 2, core["hy"] - h / 2)))
 
+    # mGP -> cGP 交界那一帧模拟 mLG：标成断点，并在这一帧翻转几个宏（引脚偏移更新）
+    flip_frame = next((f for f in range(n_frames) if f / max(1, n_frames - 1) >= 0.75), None)
+
     for f in range(n_frames):
         t = f / max(1, n_frames - 1)
         ease = t * t * (3 - 2 * t)          # smoothstep，像真实收敛那样先慢后快再稳
@@ -337,7 +375,22 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
             xs.append(cx0 + (targets[i][0] - cx0) * ease + rng.uniform(-jitter, jitter))
             ys.append(cy0 + (targets[i][1] - cy0) * ease + rng.uniform(-jitter, jitter))
         stage = "mGP" if t < 0.75 else "cGP"
-        bundle.add_frame(f, xs, ys, {"stage": stage, "label": f"{stage} iter {f * 10}"})
+        meta = {"stage": stage, "label": f"{stage} iter {f * 10}"}
+        if f == flip_frame:
+            meta["breakBefore"] = True
+            meta["label"] += "（模拟 mLG：翻转 3 个宏）"
+        bundle.add_frame(f, xs, ys, meta)
+
+    # 网表用独立的随机数流：不扰动上面的几何与帧，已有样本文件逐字节不变
+    final_pos = []
+    for i in range(n_total):
+        if i in fixed_pos:
+            w, h = sizes[i]
+            final_pos.append((fixed_pos[i][0] + w / 2, fixed_pos[i][1] + h / 2))
+        else:
+            final_pos.append(targets[i])
+    synthetic_nets(bundle, random.Random(seed + 7919), sizes, flags, final_pos,
+                   n_cells, n_movable, n_fixed_end, side, flip_frame)
 
     # 配一份形状合理的 metrics.csv：HPWL 先升后降、τ 单调下降，与真实曲线同形
     lines = ["stage,iter,hpwl,overflow,lambda,gamma,step_size,"
@@ -365,6 +418,95 @@ def synthetic(out: Path, n_cells: int, n_macros: int, n_frames: int, seed: int) 
           f"{n_fixed_end - n_movable} / filler {n_filler}），{n_frames} 帧，"
           f"{total_mb:.2f} MB -> {out}")
     return 0
+
+
+def synthetic_nets(bundle: Bundle, rng: random.Random, sizes: list[tuple[float, float]],
+                   flags: list[int], final_pos: list[tuple[float, float]], n_cells: int,
+                   n_movable: int, n_fixed_end: int, side: float,
+                   flip_frame: int | None) -> None:
+    """合成网表：以按最终位置就近连接的小 net 为主，覆盖前端必须处理的形态。
+
+    形态清单：度数 2~30 的局部 net；每个宏、每个 pad、每个 terminal_NI 都至少在一个
+    net 里；两个度数 > 100 的大 net（验证高亮过滤）；一个度数 1、一个度数 0 的 net；
+    少量权重 2.0 的 net；mLG 帧翻转 3 个宏（验证偏移更新）。
+    引脚顺序整体打乱，使 net_pins 不是恒等排列——前端若把"net 内序号"当成引脚下标，会立刻露馅。
+    """
+    real = list(range(n_fixed_end))   # filler 没有引脚
+    cell = max(side / 40.0, 1.0)
+    grid: dict[tuple[int, int], list[int]] = {}
+    for i in real:
+        if flags[i] & F_NI:
+            continue
+        x, y = final_pos[i]
+        grid.setdefault((int(x // cell), int(y // cell)), []).append(i)
+
+    def near(i: int, k: int) -> list[int]:
+        x, y = final_pos[i]
+        gx, gy = int(x // cell), int(y // cell)
+        pool: list[int] = []
+        for r in range(1, 6):
+            pool = [j for dx in range(-r, r + 1) for dy in range(-r, r + 1)
+                    for j in grid.get((gx + dx, gy + dy), []) if j != i]
+            if len(pool) >= k:
+                break
+        return rng.sample(pool, min(k, len(pool)))
+
+    def degree() -> int:
+        u = rng.random()
+        if u < 0.40: return 2
+        if u < 0.65: return 3
+        if u < 0.77: return 4
+        if u < 0.85: return 5
+        if u < 0.95: return rng.randint(6, 10)
+        return rng.randint(11, 30)
+
+    nets: list[list[int]] = []
+    for _ in range(int(n_cells * 1.05)):
+        a = rng.randrange(n_cells)
+        nets.append([a] + near(a, degree() - 1))
+    for m in range(n_cells, n_movable):            # 每个宏一个 net
+        nets.append([m] + near(m, rng.randint(4, 8)))
+    for p in range(n_movable, n_fixed_end):        # 每个 pad / NI 一个 net
+        nets.append([p] + near(p, rng.randint(1, 4)) if not (flags[p] & F_NI)
+                    else [p] + rng.sample(range(n_cells), rng.randint(1, 2)))
+    nets.append(rng.sample(range(n_movable), 150))  # 两个大 net
+    nets.append(rng.sample(real, 400))
+    nets.append([rng.randrange(n_cells)])          # 度数 1
+    nets.append([])                                # 度数 0
+
+    # 按 net 顺序生成引脚，再整体打乱引脚下标
+    pins: list[tuple[int, float, float, int]] = []
+    for k, members in enumerate(nets):
+        for node in members:
+            w, h = sizes[node]
+            dx = round(rng.uniform(-w / 2, w / 2) * 2) / 2 if w > 0 else 0.0
+            dy = round(rng.uniform(-h / 2, h / 2) * 2) / 2 if h > 0 else 0.0
+            pins.append((node, dx, dy, k))
+    rng.shuffle(pins)
+
+    m_nets, p_count = len(nets), len(pins)
+    net_start = [0] * (m_nets + 1)
+    for _, _, _, k in pins:
+        net_start[k + 1] += 1
+    for k in range(m_nets):
+        net_start[k + 1] += net_start[k]
+    cursor = net_start[:-1]
+    net_pins = [0] * p_count
+    for p, (_, _, _, k) in enumerate(pins):
+        net_pins[cursor[k]] = p
+        cursor[k] += 1
+
+    weights = [1.0] * m_nets
+    for k in rng.sample(range(m_nets), 12):
+        weights[k] = 2.0
+    bundle.write_nets(net_start, net_pins, [p[0] for p in pins], [(p[1], p[2]) for p in pins],
+                      [f"n{k}" for k in range(m_nets)], weights)
+
+    if flip_frame is not None:
+        flipped = set(range(n_cells, min(n_cells + 3, n_movable)))
+        recs = [(p, -dx, dy) for p, (node, dx, dy, _) in enumerate(pins)
+                if node in flipped and dx != 0.0]
+        bundle.add_offset_update(flip_frame, recs)
 
 
 # --------------------------------------------------------------------- 契约校验
@@ -453,6 +595,9 @@ def verify(path: Path) -> int:
                     lines = sum(1 for _ in f)
                 need(lines == n, f"names.txt 应有 {n} 行（与 nodeCount 一致），实得 {lines}")
 
+        if "nets" in scene:
+            errs.extend(verify_nets(path, scene["nets"], n, frames))
+
     if scene.get("hasMetrics") and not (path / "metrics.csv").is_file():
         errs.append("hasMetrics=true 但没有 metrics.csv")
 
@@ -462,9 +607,101 @@ def verify(path: Path) -> int:
             print(f"    - {e}", file=sys.stderr)
         return 1
     total = sum(p.stat().st_size for p in path.rglob("*") if p.is_file()) / 1e6
+    nets = scene.get("nets")
+    net_info = (f"，网表 {nets['netCount']} 个 net / {nets['pinCount']} 个引脚 / "
+                f"偏移更新 {len(nets.get('offsetUpdates', []))} 次" if nets else "，无网表")
     print(f"✓ {path} 符合 {FORMAT_VERSION}："
-          f"{n} 个节点，{len(scene.get('frames', []))} 帧，{total:.2f} MB")
+          f"{n} 个节点，{len(scene.get('frames', []))} 帧{net_info}，{total:.2f} MB")
     return 0
+
+
+def verify_nets(path: Path, nets: dict, n: int, frames: list[dict]) -> list[str]:
+    """网表 nets/ 的校验（§3.9）。返回错误列表；尺寸不对时不再往下查内容。"""
+    errs: list[str] = []
+    m, p = nets.get("netCount"), nets.get("pinCount")
+    if not (isinstance(m, int) and m >= 0 and isinstance(p, int) and p >= 0):
+        return [f"nets.netCount / pinCount 非法：{m!r} / {p!r}"]
+
+    nd = path / "nets"
+    expect = {"net_start.bin": 4 * (m + 1), "net_pins.bin": 4 * p,
+              "pin_node.bin": 4 * p, "pin_offset.bin": 8 * p}
+    for name, size in expect.items():
+        f = nd / name
+        if not f.is_file():
+            errs.append(f"缺少 nets/{name}")
+        elif f.stat().st_size != size:
+            errs.append(f"nets/{name} 应为 {size} 字节，实得 {f.stat().st_size}")
+    if errs:
+        return errs
+
+    def load(name: str, code: str) -> array.array:
+        a = array.array(code)
+        a.frombytes((nd / name).read_bytes())
+        if sys.byteorder == "big":
+            a.byteswap()
+        return a
+
+    start = load("net_start.bin", "i")
+    if start[0] != 0 or start[m] != p:
+        errs.append(f"net_start 首尾应为 0 与 pinCount={p}，实得 {start[0]} 与 {start[m]}")
+    if any(start[k + 1] < start[k] for k in range(m)):
+        errs.append("net_start 必须单调不减")
+
+    seen = bytearray(p)
+    bad = 0
+    for q in load("net_pins.bin", "i"):
+        if 0 <= q < p and not seen[q]:
+            seen[q] = 1
+        else:
+            bad += 1
+    if bad:
+        errs.append(f"net_pins 应是 [0, {p}) 的一个排列：{bad} 个下标越界或重复")
+
+    nodes = load("pin_node.bin", "i")
+    out = sum(1 for v in nodes if not 0 <= v < n)
+    if out:
+        errs.append(f"pin_node 有 {out} 个值不在 [0, nodeCount={n})")
+    if not all(math.isfinite(v) for v in load("pin_offset.bin", "f")):
+        errs.append("pin_offset 含非有限值")
+
+    last = -1
+    for u in nets.get("offsetUpdates", []):
+        fr, cnt, f = u.get("frame"), u.get("count"), path / u.get("file", "")
+        if not (isinstance(fr, int) and 0 <= fr < len(frames)):
+            errs.append(f"offsetUpdates.frame 越界：{fr!r}")
+            continue
+        if fr <= last:
+            errs.append(f"offsetUpdates.frame 必须严格升序：{fr} 在 {last} 之后")
+        last = fr
+        if not frames[fr].get("breakBefore", False):
+            errs.append(f"带偏移更新的 frames[{fr}] 必须是 breakBefore")
+        if not f.is_file():
+            errs.append(f"缺少偏移更新文件 {u.get('file')!r}")
+            continue
+        if f.stat().st_size != 12 * cnt:
+            errs.append(f"{u['file']} 应为 12×{cnt} 字节，实得 {f.stat().st_size}")
+            continue
+        raw = f.read_bytes()
+        for k in range(cnt):
+            pin, dx, dy = struct.unpack_from("<iff", raw, 12 * k)
+            if not 0 <= pin < p or not (math.isfinite(dx) and math.isfinite(dy)):
+                errs.append(f"{u['file']} 第 {k} 条记录非法：pin={pin} dx={dx} dy={dy}")
+                break
+
+    if nets.get("hasNames"):
+        f = nd / "net_names.txt"
+        if not f.is_file():
+            errs.append("nets.hasNames=true 但没有 nets/net_names.txt")
+        else:
+            with f.open("rb") as fh:
+                lines = sum(1 for _ in fh)
+            if lines != m:
+                errs.append(f"nets/net_names.txt 应有 {m} 行，实得 {lines}")
+    if nets.get("hasWeights"):
+        f = nd / "net_weight.bin"
+        if not f.is_file() or f.stat().st_size != 4 * m:
+            errs.append(f"nets.hasWeights=true 但 nets/net_weight.bin 缺失或不是 {4 * m} 字节")
+    return errs
 
 
 def main() -> int:

@@ -441,26 +441,47 @@ void App::updateContinuousValues() {
     const int n = src_->scene().nodeCount;
 
     if (compareOn_) {
-        // T8：两帧位移量（覆盖 T7 的着色模式）
-        frameA_ = std::clamp(frameA_, 0, src_->frameCount() - 1);
-        frameB_ = std::clamp(frameB_, 0, src_->frameCount() - 1);
-        FrameView fa, fb;
-        if (src_->frame(frameA_, fa) && src_->frame(frameB_, fb) &&
-            fa.valid() && fb.valid()) {
+        // T21：位移按参考三选计算。当前显示插值位置 = lerp(lo,hi,alpha)。
+        const PlaybackController::DisplayState ds = playback_.state();
+        FrameView flo, fhi;
+        src_->frame(std::max(0, ds.lo), flo);
+        if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
+        // 参考帧
+        int refFrame = 0;
+        if (dispRefMode_ == 1) {
+            // 相对 init 结束：第一个非 init 阶段帧（mLG 起点）
+            refFrame = 0;
+            for (size_t i = 0; i < metas_.size(); ++i)
+                if (metas_[i].stage != "init") { refFrame = (int)i; break; }
+        } else if (dispRefMode_ == 0) {
+            refFrame = std::max(0, ds.lo);  // 瞬时：参考 lo
+        }
+        FrameView fref;
+        bool haveRef = dispRefMode_ != 0 && src_->frame(refFrame, fref) && fref.valid();
+        if (flo.valid()) {
             dispValues_.assign(static_cast<size_t>(n), 0.f);
-            float mx = 0.f;
+            std::vector<float> mags; mags.reserve(n);
             for (int i = 0; i < n; ++i) {
-                const float dx = fb.x[i] - fa.x[i];
-                const float dy = fb.y[i] - fa.y[i];
-                const float d = std::hypot(dx, dy);
-                dispValues_[static_cast<size_t>(i)] = d;
-                mx = std::max(mx, d);
+                float cx = flo.x[i], cy = flo.y[i];
+                if (fhi.valid() && ds.hi > ds.lo) {
+                    cx += ds.alpha * (fhi.x[i] - cx);
+                    cy += ds.alpha * (fhi.y[i] - cy);
+                }
+                float rx = 0, ry = 0;
+                if (dispRefMode_ == 0) { rx = fhi.valid() ? fhi.x[i] : cx; ry = fhi.valid() ? fhi.y[i] : cy; }
+                else if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
+                const float d = std::hypot(cx - rx, cy - ry);
+                dispValues_[i] = d;
+                mags.push_back(d);
             }
+            // 固定色表范围：第 99 百分位
+            std::sort(mags.begin(), mags.end());
+            float p99 = mags.empty() ? 1.f : mags[(size_t)(mags.size() * 0.99)];
+            if (p99 <= 0.f) p99 = 1.f;
             canvas_.setColorMode(ColorMode::Displacement);
             canvas_.setContinuousValues(dispValues_.data(), n);
-            canvas_.setValueRange(0.f, mx > 0.f ? mx : 1.f);
-            lastValMin_ = 0.f;
-            lastValMax_ = mx > 0.f ? mx : 1.f;
+            canvas_.setValueRange(0.f, p99);
+            lastValMin_ = 0.f; lastValMax_ = p99;
             return;
         }
     }
@@ -976,23 +997,38 @@ void App::drawCanvasPanel(unsigned dockId) {
         }
     }
 
-    // ---- T8：位移向量场（抽样绘制，避免 35 万箭头糊满）
+    // ---- T21：位移向量场（参考位置→当前位置，末端落在当前矩形，抽样≤4000）
     if (compareOn_ && showVectors_ && src_ && geomUploaded_) {
-        FrameView fa, fb;
-        if (src_->frame(frameA_, fa) && src_->frame(frameB_, fb) && fa.valid() && fb.valid()) {
+        const PlaybackController::DisplayState ds = playback_.state();
+        FrameView flo, fhi;
+        src_->frame(std::max(0, ds.lo), flo);
+        if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
+        int refFrame = dispRefMode_ == 1 ? 0 : 0;
+        if (dispRefMode_ == 1)
+            for (size_t i = 0; i < metas_.size(); ++i)
+                if (metas_[i].stage != "init") { refFrame = (int)i; break; }
+        if (dispRefMode_ == 0) refFrame = std::max(0, ds.lo);
+        FrameView fref; bool haveRef = dispRefMode_ != 0 &&
+            src_->frame(refFrame, fref) && fref.valid();
+        if (flo.valid()) {
             const int n = src_->scene().nodeCount;
-            const int stride = std::max(1, n / 4000);   // 最多约 4000 支箭头
+            const int stride = std::max(1, n / 4000);
             for (int i = 0; i < n; i += stride) {
-                const float dx = fb.x[i] - fa.x[i], dy = fb.y[i] - fa.y[i];
-                const float len = std::hypot(dx, dy);
-                if (len < 1e-3f) continue;
-                float sx0 = 0.f, sy0 = 0.f, sx1 = 0.f, sy1 = 0.f;
-                cam_.worldToScreen(fa.x[i], fa.y[i], canvasW_, canvasH_, &sx0, &sy0);
-                cam_.worldToScreen(fb.x[i], fb.y[i], canvasW_, canvasH_, &sx1, &sy1);
+                float cx = flo.x[i], cy = flo.y[i];
+                if (fhi.valid() && ds.hi > ds.lo) {
+                    cx += ds.alpha * (fhi.x[i] - cx);
+                    cy += ds.alpha * (fhi.y[i] - cy);
+                }
+                float rx = 0, ry = 0;
+                if (dispRefMode_ == 0) { rx = fhi.valid() ? fhi.x[i] : cx; ry = fhi.valid() ? fhi.y[i] : cy; }
+                else if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
+                if (std::hypot(cx - rx, cy - ry) < 1e-3f) continue;
+                float sx0, sy0, sx1, sy1;
+                cam_.worldToScreen(rx, ry, canvasW_, canvasH_, &sx0, &sy0);
+                cam_.worldToScreen(cx, cy, canvasW_, canvasH_, &sx1, &sy1);
                 const ImVec2 p0(canvasX_ + sx0, canvasY_ + sy0);
                 const ImVec2 p1(canvasX_ + sx1, canvasY_ + sy1);
                 fg->AddLine(p0, p1, IM_COL32(200, 40, 40, 200), 1.5f);
-                // R3(nit)：端点小箭头头（屏幕空间两支短刻线），位移过短则不画。
                 const float vx = p1.x - p0.x, vy = p1.y - p0.y;
                 const float vlen = std::hypot(vx, vy);
                 if (vlen > 6.f) {

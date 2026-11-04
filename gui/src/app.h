@@ -132,6 +132,7 @@ private:
     SpatialIndex pickIndex_;
     bool indexDirty_ = true;
     int  selected_ = -1;
+    std::string selectedNameBuf_;       ///< T24：左上角读数显示选中名
     float downX_ = 0.f, downY_ = 0.f;   ///< 按下位置，区分单击与拖拽
 
     // ---- T5：metrics 行 ↔ 抽样帧映射

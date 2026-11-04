@@ -878,6 +878,10 @@ void App::drawCanvasPanel(unsigned dockId) {
         } else {
             std::snprintf(buf, sizeof(buf), "%.4f px/unit   滚轮缩放 · 拖拽平移", cam_.scale);
         }
+        if (!selectedNameBuf_.empty()) {
+            size_t l = std::strlen(buf);
+            std::snprintf(buf + l, sizeof(buf) - l, "%s", selectedNameBuf_.c_str());
+        }
         fg->AddText(ImVec2(canvasX_ + 10, canvasY_ + 10),
                     IM_COL32(90, 90, 90, 255), buf);
 
@@ -928,21 +932,47 @@ void App::drawCanvasPanel(unsigned dockId) {
         }
     }
 
-    // ---- T4：选中项高亮（真实矩形，黄色描边）。R2-1：隐藏层不画残留黄框。
+    // ---- T4/T24：选中项高亮（跟随 lo/hi/alpha 插值，最小屏幕 8px）。
     if (selected_ >= 0 && src_) {
         const NodeGeometry& g = src_->geometry();
-        const bool selVisible = selected_ < static_cast<int>(g.kind.size()) &&
-                                canvas_.layerVisible[g.kind[static_cast<size_t>(selected_)]];
-        const float* sx = nullptr; const float* sy = nullptr;
-        if (selVisible && selected_ < static_cast<int>(g.w.size()) &&
-            statsSource(&sx, &sy)) {
-            const float cx = sx[selected_], cy = sy[selected_];
+        if (selected_ < static_cast<int>(g.w.size()) &&
+            selected_ < static_cast<int>(g.kind.size()) &&
+            canvas_.layerVisible[g.kind[selected_]]) {
+            // 取当前显示插值位置：lo/hi 两帧按 alpha lerp。
+            const PlaybackController::DisplayState ds = playback_.state();
+            FrameView flo, fhi;
+            src_->frame(std::max(0, ds.lo), flo);
+            if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
+            float cx = 0.f, cy = 0.f;
+            if (flo.valid()) {
+                cx = flo.x[selected_]; cy = flo.y[selected_];
+                if (fhi.valid() && ds.hi > ds.lo) {
+                    cx += ds.alpha * (fhi.x[selected_] - cx);
+                    cy += ds.alpha * (fhi.y[selected_] - cy);
+                }
+            }
             const float hw = g.w[selected_] * 0.5f, hh = g.h[selected_] * 0.5f;
-            float x0 = 0.f, y0 = 0.f, x1 = 0.f, y1 = 0.f;
+            float x0, y0, x1, y1;
             cam_.worldToScreen(cx - hw, cy - hh, canvasW_, canvasH_, &x0, &y0);
             cam_.worldToScreen(cx + hw, cy + hh, canvasW_, canvasH_, &x1, &y1);
-            fg->AddRect({canvasX_ + x0, canvasY_ + y1}, {canvasX_ + x1, canvasY_ + y0},
-                        IM_COL32(255, 200, 0, 255), 0.f, 0, 2.5f);
+            // 最小屏幕 8px：不足则画十字。
+            const float wpx = x1 - x0, hpx = y1 - y0;
+            if (wpx >= 8.f && hpx >= 8.f) {
+                fg->AddRect({canvasX_ + x0, canvasY_ + y1},
+                            {canvasX_ + x1, canvasY_ + y0},
+                            IM_COL32(255, 200, 0, 255), 0.f, 0, 2.5f);
+            } else {
+                const float mx = canvasX_ + (x0 + x1) * 0.5f;
+                const float my = canvasY_ + (y0 + y1) * 0.5f;
+                fg->AddLine({mx - 5, my}, {mx + 5, my}, IM_COL32(255, 200, 0, 255), 2.f);
+                fg->AddLine({mx, my - 5}, {mx, my + 5}, IM_COL32(255, 200, 0, 255), 2.f);
+            }
+            // 读数显示选中名
+            if (selected_ < (int)g.name.size()) {
+                char sb[96];
+                std::snprintf(sb, sizeof(sb), "  选中: %s", g.name[selected_].c_str());
+                selectedNameBuf_ = sb;
+            }
         }
     }
 

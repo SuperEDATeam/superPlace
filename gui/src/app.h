@@ -132,6 +132,7 @@ private:
     SpatialIndex pickIndex_;
     bool indexDirty_ = true;
     int  selected_ = -1;
+    int  selectedNet_ = -1;   ///< T10：点检视面板 net 名后只高亮该 net
     std::string selectedNameBuf_;       ///< T24：左上角读数显示选中名
     float downX_ = 0.f, downY_ = 0.f;   ///< 按下位置，区分单击与拖拽
 

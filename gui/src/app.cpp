@@ -164,6 +164,9 @@ void App::setSource(std::unique_ptr<IPlacementSource> src) {
     statsFv_ = FrameView();
     statsKeyFrame_ = -1;
     statsFromInterp_ = false;
+    dispRangeDirty_ = true;
+    netCountValues_.clear();
+    selectedNet_ = -1;
     // 重置全部派生状态
     selected_ = -1;
     indexDirty_ = true;
@@ -1046,9 +1049,10 @@ void App::drawCanvasPanel(unsigned dockId) {
                 std::snprintf(sb, sizeof(sb), "  选中: %s", g.name[selected_].c_str());
                 selectedNameBuf_ = sb;
             }
-            // T10：net 星形高亮——遍历选中单元所属 net 的全部引脚（基于 node 当前插值中心 + lo 帧偏移）。
+            // T10：net 星形高亮——遍历选中单元所属 net 的全部引脚（基于 lo 帧 node 中心 + lo 偏移）。
             if (const NetList* nl = src_->nets()) {
                 const std::vector<float>* off = nl->pinOffsetForFrame(std::max(0, ds.lo), bundlePath_);
+                FrameView loF; bool haveLo = src_->frame(std::max(0, ds.lo), loF) && loF.valid();
                 // 收集选中节点所属的去重 net
                 std::vector<int> netsOfSel;
                 auto sp0 = nl->nodePinStart[selected_], sp1 = nl->nodePinStart[selected_ + 1];
@@ -1059,11 +1063,15 @@ void App::drawCanvasPanel(unsigned dockId) {
                 }
                 std::sort(netsOfSel.begin(), netsOfSel.end());
                 netsOfSel.erase(std::unique(netsOfSel.begin(), netsOfSel.end()), netsOfSel.end());
+                const float selSx = canvasX_ + (x0 + x1) * 0.5f;
+                const float selSy = canvasY_ + (y0 + y1) * 0.5f;
                 for (int net : netsOfSel) {
                     if (net < 0) continue;
+                    if (selectedNet_ >= 0 && net != selectedNet_) continue;
                     int deg = nl->netStart[net + 1] - nl->netStart[net];
                     if (deg > netDegThreshold_) continue;
                     int q0 = nl->netStart[net], q1 = nl->netStart[net + 1];
+                    float bx0 = 1e18f, by0 = 1e18f, bx1 = -1e18f, by1 = -1e18f;
                     for (int q = q0; q < q1; ++q) {
                         int pin = nl->netPins[q];
                         int node = nl->pinNode[pin];
@@ -1072,36 +1080,47 @@ void App::drawCanvasPanel(unsigned dockId) {
                         if (off && (int)off->size() >= pin * 2 + 2) {
                             ox = (*off)[pin * 2]; oy = (*off)[pin * 2 + 1];
                         }
-                        // pin 所属单元当前插值中心（近似用 lo 帧位置，播放中高亮不 lerp 偏移）
                         float px = cx, py = cy;
-                        if (node != selected_) {
-                            // 用 lo 帧几何中心近似（不另取帧）
-                            px = g.w.empty() ? cx : 0.f; py = 0.f;
+                        if (haveLo && node >= 0 && node < src_->scene().nodeCount) {
+                            px = loF.x[node]; py = loF.y[node];
                         }
+                        bx0 = std::min(bx0, px + ox); by0 = std::min(by0, py + oy);
+                        bx1 = std::max(bx1, px + ox); by1 = std::max(by1, py + oy);
                         float sx, sy;
                         cam_.worldToScreen(px + ox, py + oy, canvasW_, canvasH_, &sx, &sy);
-                        fg->AddLine({canvasX_ + (x0 + x1) * 0.5f, canvasY_ + (y0 + y1) * 0.5f},
-                                    {canvasX_ + sx, canvasY_ + sy},
-                                    IM_COL32(120, 180, 255, 200), 1.2f);
+                        // 其他 pin 所属单元描边
+                        if (node != selected_)
+                            fg->AddRect({canvasX_ + sx - 2.f, canvasY_ + sy - 2.f},
+                                        {canvasX_ + sx + 2.f, canvasY_ + sy + 2.f},
+                                        IM_COL32(120, 180, 255, 200));
                     }
+                    // star 连到 net 引脚 bbox 中心
+                    float bcx = (bx0 + bx1) * 0.5f, bcy = (by0 + by1) * 0.5f;
+                    float sxc, syc;
+                    cam_.worldToScreen(bcx, bcy, canvasW_, canvasH_, &sxc, &syc);
+                    fg->AddLine({selSx, selSy}, {canvasX_ + sxc, canvasY_ + syc},
+                                IM_COL32(120, 180, 255, 220), 1.5f);
                 }
             }
         }
     }
 
-    // ---- T21：位移向量场（参考位置→当前位置，末端落在当前矩形，抽样≤4000）
+    // ---- T21：位移向量场（参考位置→当前插值位置，末端落当前矩形，stride≤4000）
     if (compareOn_ && showVectors_ && src_ && geomUploaded_) {
         const PlaybackController::DisplayState ds = playback_.state();
         FrameView flo, fhi;
         src_->frame(std::max(0, ds.lo), flo);
         if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
-        int refFrame = dispRefMode_ == 1 ? 0 : 0;
-        if (dispRefMode_ == 1)
-            for (size_t i = 0; i < metas_.size(); ++i)
-                if (metas_[i].stage != "init") { refFrame = (int)i; break; }
-        if (dispRefMode_ == 0) refFrame = std::max(0, ds.lo);
-        FrameView fref; bool haveRef = dispRefMode_ != 0 &&
-            src_->frame(refFrame, fref) && fref.valid();
+        int refFrame = 0;
+        if (dispRefMode_ == 1) {
+            for (int i = (int)metas_.size() - 1; i >= 0; --i)
+                if (metas_[i].stage == "init") { refFrame = i; break; }
+        } else if (dispRefMode_ == 0) {
+            refFrame = std::max(0, ds.lo);  // 瞬时：箭头 lo→当前
+        } else {
+            refFrame = 0;  // 相对输入：第0帧
+        }
+        FrameView fref; bool haveRef = src_->frame(refFrame, fref) && fref.valid();
         if (flo.valid()) {
             const int n = src_->scene().nodeCount;
             const int stride = std::max(1, n / 4000);
@@ -1111,9 +1130,8 @@ void App::drawCanvasPanel(unsigned dockId) {
                     cx += ds.alpha * (fhi.x[i] - cx);
                     cy += ds.alpha * (fhi.y[i] - cy);
                 }
-                float rx = 0, ry = 0;
-                if (dispRefMode_ == 0) { rx = fhi.valid() ? fhi.x[i] : cx; ry = fhi.valid() ? fhi.y[i] : cy; }
-                else if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
+                float rx = cx, ry = cy;
+                if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
                 if (std::hypot(cx - rx, cy - ry) < 1e-3f) continue;
                 float sx0, sy0, sx1, sy1;
                 cam_.worldToScreen(rx, ry, canvasW_, canvasH_, &sx0, &sy0);
@@ -1547,15 +1565,18 @@ void App::drawInspectPanel() {
         int p0 = nl->nodePinStart[selected_], p1 = nl->nodePinStart[selected_ + 1];
         ImGui::SeparatorText("网表");
         ImGui::Text("引脚数    %d", p1 - p0);
+        if (selectedNet_ >= 0 && ImGui::SmallButton("显示全部 net")) selectedNet_ = -1;
         for (int pi = p0; pi < p1; ++pi) {
             int pin = nl->nodePins[pi];
             int net = nl->pinNet[pin];
             if (net < 0) continue;
+            if (selectedNet_ >= 0 && net != selectedNet_) continue;
             int deg = nl->netStart[net + 1] - nl->netStart[net];
             const char* nm = (nl->hasNames && net < (int)nl->netNames.size())
                                  ? nl->netNames[net].c_str() : "—";
             float w = nl->hasWeights && net < (int)nl->netWeight.size() ? nl->netWeight[net] : 1.f;
-            ImGui::BulletText("%s  度=%d  权重=%.2f", nm, deg, w);
+            char lbl[160]; std::snprintf(lbl, sizeof(lbl), "%s  度=%d  权重=%.2f", nm, deg, w);
+            if (ImGui::Selectable(lbl)) selectedNet_ = net;
         }
     } else {
         ImGui::TextDisabled("无网表（bundle 不含 nets/）");

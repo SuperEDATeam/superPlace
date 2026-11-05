@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <vector>
 
 #include <GLFW/glfw3.h>
@@ -18,6 +19,8 @@
 
 #include "render/scale_tick.h"
 #include "viz/summary.h"
+#include "viz/nets.h"
+#include "viz/displacement.h"
 
 namespace viz {
 namespace {
@@ -161,6 +164,9 @@ void App::setSource(std::unique_ptr<IPlacementSource> src) {
     statsFv_ = FrameView();
     statsKeyFrame_ = -1;
     statsFromInterp_ = false;
+    dispRangeDirty_ = true;
+    netCountValues_.clear();
+    selectedNet_ = -1;
     // 重置全部派生状态
     selected_ = -1;
     indexDirty_ = true;
@@ -176,8 +182,6 @@ void App::setSource(std::unique_ptr<IPlacementSource> src) {
     prevCanvasW_ = prevCanvasH_ = -1.f;
     colorMode_ = ColorMode::Kind;
     compareOn_ = false;
-    frameA_ = 0;
-    frameB_ = src_ ? std::min(1, src_->frameCount() - 1) : 0;
 
     // T14：从 frameInfo 建回放时间轴（只读元数据，不触发位置 I/O）。
     metas_.clear();
@@ -233,7 +237,7 @@ bool App::initWindow() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    window_ = glfwCreateWindow(opt_.width, opt_.height, "superPlace 布局查看器", nullptr, nullptr);
+    window_ = glfwCreateWindow(opt_.width, opt_.height, "superPlace Viewer", nullptr, nullptr);
     if (!window_) {
         std::fprintf(stderr,
                      "创建窗口失败。请确认已装 GLFW/Mesa 开发包且具备可用显示（DISPLAY）。\n");
@@ -408,6 +412,26 @@ void App::rebuildIndexIfDirty() {
     }
 }
 
+// T24：点击时用当前插值位置强制重建索引（不依赖 statsSource 关键帧）。
+void App::rebuildIndexAtCurrent() {
+    if (!src_) return;
+    const PlaybackController::DisplayState ds = playback_.state();
+    FrameView lo, hi;
+    src_->frame(std::max(0, ds.lo), lo);
+    if (ds.hi > ds.lo) src_->frame(ds.hi, hi);
+    const int n = src_->scene().nodeCount;
+    interpX_.assign(n, 0.f); interpY_.assign(n, 0.f);
+    for (int i = 0; i < n; ++i) {
+        float x = lo.x[i], y = lo.y[i];
+        if (hi.valid()) {
+            x += ds.alpha * (hi.x[i] - x);
+            y += ds.alpha * (hi.y[i] - y);
+        }
+        interpX_[i] = x; interpY_[i] = y;
+    }
+    pickIndex_.build(src_->scene().chip, interpX_.data(), interpY_.data(), src_->geometry());
+}
+
 void App::rebuildDensityIfDirty() {
     if (!densityDirty_ || !src_) return;
     const auto t0 = std::chrono::steady_clock::now();
@@ -441,28 +465,78 @@ void App::updateContinuousValues() {
     const int n = src_->scene().nodeCount;
 
     if (compareOn_) {
-        // T8：两帧位移量（覆盖 T7 的着色模式）
-        frameA_ = std::clamp(frameA_, 0, src_->frameCount() - 1);
-        frameB_ = std::clamp(frameB_, 0, src_->frameCount() - 1);
-        FrameView fa, fb;
-        if (src_->frame(frameA_, fa) && src_->frame(frameB_, fb) &&
-            fa.valid() && fb.valid()) {
-            dispValues_.assign(static_cast<size_t>(n), 0.f);
-            float mx = 0.f;
-            for (int i = 0; i < n; ++i) {
-                const float dx = fb.x[i] - fa.x[i];
-                const float dy = fb.y[i] - fa.y[i];
-                const float d = std::hypot(dx, dy);
-                dispValues_[static_cast<size_t>(i)] = d;
-                mx = std::max(mx, d);
+        // T21：位移按参考三选（纯逻辑见 viz/displacement.h）。
+        const PlaybackController::DisplayState ds = playback_.state();
+        // 区间选择：hi>lo 用 lo/hi；否则停在 breakBefore 关键帧，用 prev/current（lo-1,lo）
+        int loIdx = std::max(0, ds.lo), hiIdx = ds.hi;
+        float useAlpha = ds.hi > ds.lo ? ds.alpha : 1.f;
+        if (ds.hi == ds.lo && ds.lo > 0) {
+            loIdx = ds.lo - 1; hiIdx = ds.lo;  // prev→current 硬跳变
+        }
+        FrameView flo, fhi;
+        src_->frame(loIdx, flo);
+        if (hiIdx > loIdx) src_->frame(hiIdx, fhi);
+        // 参考帧
+        int refFrame = 0;
+        if (dispRefMode_ == 1) {
+            for (int i = (int)metas_.size() - 1; i >= 0; --i)
+                if (metas_[i].stage == "init") { refFrame = i; break; }
+        } else if (dispRefMode_ == 2) {
+            refFrame = 0;
+        }
+        FrameView fref;
+        bool haveRef = dispRefMode_ != 0 && src_->frame(refFrame, fref) && fref.valid();
+        if (flo.valid()) {
+            dispValues_.assign((size_t)n, 0.f);
+            viz::FrameViewLite L{flo.x, flo.y};
+            viz::FrameViewLite H{fhi.valid() ? fhi.x : nullptr,
+                                 fhi.valid() ? fhi.y : nullptr};
+            viz::FrameViewLite R{haveRef ? fref.x : nullptr,
+                                 haveRef ? fref.y : nullptr};
+            viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R, useAlpha, n, dispValues_);
+            // 固定色表范围：末帧(frameCount-1)相对参考帧 p99，一次回放内不变。
+            if (dispRangeDirty_ || dispRange_ <= 0.f) {
+                FrameView flast, flref;
+                bool haveLast = src_->frame(src_->frameCount() - 1, flast) && flast.valid();
+                bool haveRef2 = src_->frame(refFrame, flref) && flref.valid();
+                viz::FrameViewLite L2{haveLast ? flast.x : nullptr, haveLast ? flast.y : nullptr};
+                viz::FrameViewLite H2{nullptr, nullptr};
+                viz::FrameViewLite R2{haveRef2 ? flref.x : nullptr, haveRef2 ? flref.y : nullptr};
+                std::vector<float> mags;
+                viz::dispMagnitudes((viz::DispRef)dispRefMode_, L2, H2, R2, 0.f, n, mags);
+                dispRange_ = std::max(1e-6f, viz::percentile(mags, 0.99));
+                dispRangeDirty_ = false;
             }
             canvas_.setColorMode(ColorMode::Displacement);
             canvas_.setContinuousValues(dispValues_.data(), n);
-            canvas_.setValueRange(0.f, mx > 0.f ? mx : 1.f);
-            lastValMin_ = 0.f;
-            lastValMax_ = mx > 0.f ? mx : 1.f;
+            canvas_.setValueRange(0.f, dispRange_);
+            lastValMin_ = 0.f; lastValMax_ = dispRange_;
             return;
         }
+    }
+
+    if (colorMode_ == ColorMode::NetCount && src_->nets()) {
+        // 每节点所连不同 net 个数（同 net 多引脚算一次），懒缓存。
+        if ((int)netCountValues_.size() != n) {
+            netCountValues_.assign(n, 0.f);
+            const NetList* nl = src_->nets();
+            for (int net = 0; net < nl->netCount; ++net) {
+                int q0 = nl->netStart[net], q1 = nl->netStart[net + 1];
+                std::vector<int> nodes;
+                for (int q = q0; q < q1; ++q) nodes.push_back(nl->pinNode[nl->netPins[q]]);
+                std::sort(nodes.begin(), nodes.end());
+                nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+                for (int nd : nodes)
+                    if (nd >= 0 && nd < n) netCountValues_[nd] += 1.f;
+            }
+        }
+        float mx = 1.f;
+        for (float v : netCountValues_) mx = std::max(mx, v);
+        canvas_.setColorMode(ColorMode::NetCount);
+        canvas_.setContinuousValues(netCountValues_.data(), n);
+        canvas_.setValueRange(0.f, mx);
+        lastValMin_ = 0.f; lastValMax_ = mx;
+        return;
     }
 
     if (colorMode_ == ColorMode::Density) {
@@ -503,6 +577,7 @@ int App::run() {
             status_ = "加载失败：" + err;
         }
     }
+
     std::strncpy(pathBuf_, bundlePath_.c_str(), sizeof(pathBuf_) - 1);
 
     if (opt_.benchFrames > 0) return runBench();
@@ -520,7 +595,6 @@ int App::run() {
     }
     if (src_ && opt_.compareOn && src_->frameCount() >= 2) {
         compareOn_ = true;
-        frameB_ = src_->frameCount() - 1;
         updateContinuousValues();
     }
 
@@ -563,10 +637,11 @@ int App::run() {
             const int vh = static_cast<int>(canvasH_ * dpr);
             glViewport(vx, vy, vw, vh);
 
-            // T6 LOD：行高在屏幕上不足阈值像素时，远景切热力图、不画真实矩形。
+            // T20：默认画真实矩形（33万矩形≈1.8ms 不需 LOD）。仅当节点>100万 且行高<1px
+            // 时自动降级为热力图；heatmapOverlay_ 是可选叠加图层（默认关）。
             const float rowPx = src_->scene().rowHeight > 0.f
                                     ? src_->scene().rowHeight * cam_.scale : 0.f;
-            lodActive_ = lodAuto_ && rowPx > 0.f && rowPx < 15.f;
+            lodActive_ = src_->scene().nodeCount > 1000000 && rowPx > 0.f && rowPx < 1.f;
 
             const auto t0 = std::chrono::steady_clock::now();
             // 密度场重建后才重新上传纹理，静止视角不重复 GL 上传。
@@ -590,7 +665,7 @@ int App::run() {
                     gpuPositionsDirty_ = false;
                 }
                 if (viz::shouldDrawPositions(positionsValid_)) {
-                    if (heatmapOverlay_) uploadHm(0.28f);
+                    if (heatmapOverlay_) uploadHm(heatmapAlpha_);
                     canvas_.draw(cam_, vw, vh);
                 }
             }
@@ -755,6 +830,7 @@ void App::drawUi() {
     // 新版 ImGui 的签名是 (dockspace_id, viewport, flags)，旧版是 (viewport, flags)
     const ImGuiID dockId = ImGui::DockSpaceOverViewport(
         0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+    dockId_ = (unsigned int)dockId;
 
     // 首次运行搭一套默认布局。不这么做的话三个面板会各自浮着，而且"布局画布"
     // 会塌缩——它的尺寸取自窗口可用区，内容又按该尺寸建 InvisibleButton，
@@ -772,11 +848,15 @@ void App::drawUi() {
             ImGui::DockBuilderAddNode(dockId, ImGuiDockNodeFlags_DockSpace |
                                                   ImGuiDockNodeFlags_PassthruCentralNode);
             ImGui::DockBuilderSetNodeSize(dockId, ImGui::GetMainViewport()->Size);
-            ImGuiID right = 0, center = dockId;
+            ImGuiID right = 0, center = dockId, bottom = 0, rightTop = 0;
             // 中央节点【故意留空】，GL 画布直接画进它的矩形，见 drawCanvasPanel 的说明
             right = ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.22f, nullptr, &center);
-            ImGui::DockBuilderDockWindow("控制", right);
+            bottom = ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.22f, nullptr, &center);
+            // T24：右栏上下切分——控制在上、检视在下，各自独立节点（非标签页）。
+            rightTop = ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.55f, nullptr, &right);
+            ImGui::DockBuilderDockWindow("控制", rightTop);
             ImGui::DockBuilderDockWindow("检视", right);
+            ImGui::DockBuilderDockWindow("收敛曲线", bottom);
             ImGui::DockBuilderFinish(dockId);
         }
     }
@@ -784,7 +864,6 @@ void App::drawUi() {
     drawSidebar();
     drawMetricsPanel();
     drawInspectPanel();
-    drawComparePanel();
 }
 
 void App::drawCanvasPanel(unsigned dockId) {
@@ -800,10 +879,8 @@ void App::drawCanvasPanel(unsigned dockId) {
     if (!central) return;
 
     const float newW = std::max(central->Size.x, 1.f);
-    // R3：底部"收敛曲线/帧对比"是钉在视口底部的固定高 250 浮动窗口（未进 dock），
-    // 中央节点却占满全高；必须扣掉这条保留带，否则比例尺/横轴刻度会画进曲线区。
-    const float kReservedBottom = 250.f;
-    const float newH = std::max(central->Size.y - kReservedBottom, 1.f);
+    // T19：画布矩形 = 中央节点矩形（收敛曲线已停靠进底部子节点，不再用估算保留带）。
+    const float newH = std::max(central->Size.y, 1.f);
 
     // T2：窗口/面板尺寸变化后保持视野。中心不动，scale 按短边比例缩放，
     // 绝不重新 fit（否则丢掉用户缩放到的局部）。
@@ -827,17 +904,25 @@ void App::drawCanvasPanel(unsigned dockId) {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 lo(canvasX_, canvasY_);
     const ImVec2 hi(canvasX_ + canvasW_, canvasY_ + canvasH_);
-    // 只有鼠标落在中央节点上、且没有任何 ImGui 控件要抢输入时，才算在操作画布
-    const bool overCanvas = ImGui::IsMouseHoveringRect(lo, hi) && !io.WantCaptureMouse;
-
+    // T18：clip=false 不受隐形 Debug##Default 窗口裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
+    // T18：clip=false 不受隐形 Debug##Default 裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
+    const bool mouseInCanvas = ImGui::IsMouseHoveringRect(lo, hi, /*clip=*/false);
+    const bool overCanvas = mouseInCanvas &&
+        !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+    // 拖拽平移：只有「按下时就在画布上」才允许，避免从面板拖入误平移。
+    static bool panning = false;
     if (overCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         downX_ = io.MousePos.x;
         downY_ = io.MousePos.y;
+        panning = true;
     }
-    if (overCanvas && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) panning = false;
+    if (panning && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         cam_.cx -= io.MouseDelta.x / cam_.scale;
-        cam_.cy += io.MouseDelta.y / cam_.scale;   // 屏幕 y 向下，设计 y 向上
+        cam_.cy += io.MouseDelta.y / cam_.scale;
     }
+    // F 键 = 适应窗口
+    if (mouseInCanvas && ImGui::IsKeyPressed(ImGuiKey_F)) needFit_ = true;
     // T4：左键【单击】（非拖拽）点选；点空白处取消选中。
     if (overCanvas && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         const float moved = std::hypot(io.MousePos.x - downX_, io.MousePos.y - downY_);
@@ -845,17 +930,19 @@ void App::drawCanvasPanel(unsigned dockId) {
             float wx = 0.f, wy = 0.f;
             cam_.screenToWorld(io.MousePos.x - canvasX_, io.MousePos.y - canvasY_,
                                canvasW_, canvasH_, &wx, &wy);
-            rebuildIndexIfDirty();
-            // R1-4：关闭的图层不参与命中（掩码由画布图层开关提供）。
-            selected_ = pickIndex_.pick(wx, wy, canvas_.layerVisible);
+            rebuildIndexAtCurrent();
+            // T24：5px 屏幕容差（5/scale），先真实几何再容差内最近。
+            selected_ = pickIndex_.pickTolerant(wx, wy, 5.f / cam_.scale, canvas_.layerVisible);
         }
     }
     if (overCanvas && io.MouseWheel != 0.f) {
         cam_.zoomAt(io.MousePos.x - canvasX_, io.MousePos.y - canvasY_, canvasW_, canvasH_,
-                    std::exp(io.MouseWheel * 0.18f));
+                    std::exp(io.MouseWheel * 0.25f));
     }
 
-    ImDrawList* fg = ImGui::GetForegroundDrawList();
+    // T19：坐标轴/比例尺/读数/选中框/箭头画背景层（GL 画布之上、面板之下），clip 到画布。
+    ImDrawList* fg = ImGui::GetBackgroundDrawList();
+    fg->PushClipRect(lo, hi, true);
 
     if (src_) {
         // ---- T3：坐标读数
@@ -868,6 +955,41 @@ void App::drawCanvasPanel(unsigned dockId) {
                           wx, wy, cam_.scale);
         } else {
             std::snprintf(buf, sizeof(buf), "%.4f px/unit   滚轮缩放 · 拖拽平移", cam_.scale);
+        }
+        if (!selectedNameBuf_.empty()) {
+            size_t l = std::strlen(buf);
+            std::snprintf(buf + l, sizeof(buf) - l, "%s", selectedNameBuf_.c_str());
+        }
+        // T20：降级热力图提示
+        if (lodActive_)
+            fg->AddText(ImVec2(canvasX_ + 10, canvasY_ + 30),
+                        IM_COL32(255, 160, 0, 255),
+                        "热力图模式：图层 / 着色在此模式下不生效，放大后恢复");
+        // T20：连续色表色条（与 canvas.cpp shader cmap 同一组 viridis 停点）。
+        if (colorMode_ != ColorMode::Kind || compareOn_) {
+            const float cw = 180.f, ch = 8.f;
+            const float cx0 = canvasX_ + canvasW_ - cw - 14, cy0 = canvasY_ + canvasH_ - 14;
+            const float stops[5][3] = {{0.267f,0.005f,0.329f},{0.229f,0.322f,0.545f},
+                                       {0.127f,0.566f,0.550f},{0.369f,0.789f,0.383f},
+                                       {0.992f,0.906f,0.144f}};
+            auto vmap = [&](float t) {
+                t = std::clamp(t, 0.f, 1.f);
+                int s = std::min(4, (int)(t * 4.f));
+                float lt = t * 4.f - s;
+                if (s >= 4) { s = 3; lt = 1.f; }
+                float r = stops[s][0] + lt * (stops[s+1][0] - stops[s][0]);
+                float g = stops[s][1] + lt * (stops[s+1][1] - stops[s][1]);
+                float b = stops[s][2] + lt * (stops[s+1][2] - stops[s][2]);
+                return IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 255);
+            };
+            for (int i = 0; i < 24; ++i) {
+                float t = i / 23.f;
+                ImU32 col = vmap(t);
+                fg->AddRectFilled({cx0 + cw * t, cy0}, {cx0 + cw * (i + 1) / 23.f, cy0 + ch}, col);
+            }
+            char cb[48];
+            std::snprintf(cb, sizeof(cb), "%.3g ~ %.3g  (设计坐标单位)", lastValMin_, lastValMax_);
+            fg->AddText({cx0, cy0 - 14}, IM_COL32(90, 90, 90, 255), cb);
         }
         fg->AddText(ImVec2(canvasX_ + 10, canvasY_ + 10),
                     IM_COL32(90, 90, 90, 255), buf);
@@ -919,41 +1041,145 @@ void App::drawCanvasPanel(unsigned dockId) {
         }
     }
 
-    // ---- T4：选中项高亮（真实矩形，黄色描边）。R2-1：隐藏层不画残留黄框。
+    // ---- T4/T24：选中项高亮（跟随 lo/hi/alpha 插值，最小屏幕 8px）。
     if (selected_ >= 0 && src_) {
         const NodeGeometry& g = src_->geometry();
-        const bool selVisible = selected_ < static_cast<int>(g.kind.size()) &&
-                                canvas_.layerVisible[g.kind[static_cast<size_t>(selected_)]];
-        const float* sx = nullptr; const float* sy = nullptr;
-        if (selVisible && selected_ < static_cast<int>(g.w.size()) &&
-            statsSource(&sx, &sy)) {
-            const float cx = sx[selected_], cy = sy[selected_];
+        if (selected_ < static_cast<int>(g.w.size()) &&
+            selected_ < static_cast<int>(g.kind.size()) &&
+            canvas_.layerVisible[g.kind[selected_]]) {
+            // 取当前显示插值位置：lo/hi 两帧按 alpha lerp。
+            const PlaybackController::DisplayState ds = playback_.state();
+            FrameView flo, fhi;
+            src_->frame(std::max(0, ds.lo), flo);
+            if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
+            float cx = 0.f, cy = 0.f;
+            if (flo.valid()) {
+                cx = flo.x[selected_]; cy = flo.y[selected_];
+                if (fhi.valid() && ds.hi > ds.lo) {
+                    cx += ds.alpha * (fhi.x[selected_] - cx);
+                    cy += ds.alpha * (fhi.y[selected_] - cy);
+                }
+            }
             const float hw = g.w[selected_] * 0.5f, hh = g.h[selected_] * 0.5f;
-            float x0 = 0.f, y0 = 0.f, x1 = 0.f, y1 = 0.f;
+            float x0, y0, x1, y1;
             cam_.worldToScreen(cx - hw, cy - hh, canvasW_, canvasH_, &x0, &y0);
             cam_.worldToScreen(cx + hw, cy + hh, canvasW_, canvasH_, &x1, &y1);
-            fg->AddRect({canvasX_ + x0, canvasY_ + y1}, {canvasX_ + x1, canvasY_ + y0},
-                        IM_COL32(255, 200, 0, 255), 0.f, 0, 2.5f);
+            // 最小屏幕 8px：不足则画十字。
+            const float wpx = x1 - x0, hpx = y1 - y0;
+            if (wpx >= 8.f && hpx >= 8.f) {
+                fg->AddRect({canvasX_ + x0, canvasY_ + y1},
+                            {canvasX_ + x1, canvasY_ + y0},
+                            IM_COL32(255, 200, 0, 255), 0.f, 0, 2.5f);
+            } else {
+                const float mx = canvasX_ + (x0 + x1) * 0.5f;
+                const float my = canvasY_ + (y0 + y1) * 0.5f;
+                fg->AddLine({mx - 5, my}, {mx + 5, my}, IM_COL32(255, 200, 0, 255), 2.f);
+                fg->AddLine({mx, my - 5}, {mx, my + 5}, IM_COL32(255, 200, 0, 255), 2.f);
+            }
+            // 读数显示选中名
+            if (selected_ < (int)g.name.size()) {
+                char sb[96];
+                std::snprintf(sb, sizeof(sb), "  选中: %s", g.name[selected_].c_str());
+                selectedNameBuf_ = sb;
+            }
+            // T10：net 星形高亮——遍历选中单元所属 net 的全部引脚（基于 lo 帧 node 中心 + lo 偏移）。
+            if (const NetList* nl = src_->nets()) {
+                const std::vector<float>* off = nl->pinOffsetForFrame(std::max(0, ds.lo), bundlePath_);
+                FrameView loF; bool haveLo = src_->frame(std::max(0, ds.lo), loF) && loF.valid();
+                FrameView hiF; bool haveHi = ds.hi > ds.lo && src_->frame(ds.hi, hiF) && hiF.valid();
+                // 收集选中节点所属的去重 net
+                std::vector<int> netsOfSel;
+                auto sp0 = nl->nodePinStart[selected_], sp1 = nl->nodePinStart[selected_ + 1];
+                for (int pi = sp0; pi < sp1; ++pi) {
+                    int pin = nl->nodePins[pi];
+                    int net = nl->pinNet[pin];
+                    if (net >= 0) netsOfSel.push_back(net);
+                }
+                std::sort(netsOfSel.begin(), netsOfSel.end());
+                netsOfSel.erase(std::unique(netsOfSel.begin(), netsOfSel.end()), netsOfSel.end());
+                const float selSx = canvasX_ + (x0 + x1) * 0.5f;
+                const float selSy = canvasY_ + (y0 + y1) * 0.5f;
+                for (int net : netsOfSel) {
+                    if (net < 0) continue;
+                    if (selectedNet_ >= 0 && net != selectedNet_) continue;
+                    int deg = nl->netStart[net + 1] - nl->netStart[net];
+                    if (deg > netDegThreshold_) continue;
+                    int q0 = nl->netStart[net], q1 = nl->netStart[net + 1];
+                    float bx0 = 1e18f, by0 = 1e18f, bx1 = -1e18f, by1 = -1e18f;
+                    for (int q = q0; q < q1; ++q) {
+                        int pin = nl->netPins[q];
+                        int node = nl->pinNode[pin];
+                        if (node < 0 || node >= src_->scene().nodeCount) continue;
+                        float ox = 0, oy = 0;
+                        if (off && (int)off->size() >= pin * 2 + 2) {
+                            ox = (*off)[pin * 2]; oy = (*off)[pin * 2 + 1];
+                        }
+                        float px = cx, py = cy;
+                        if (haveLo && node >= 0 && node < src_->scene().nodeCount) {
+                            px = loF.x[node]; py = loF.y[node];
+                            if (haveHi) {
+                                px += ds.alpha * (hiF.x[node] - px);
+                                py += ds.alpha * (hiF.y[node] - py);
+                            }
+                        }
+                        bx0 = std::min(bx0, px + ox); by0 = std::min(by0, py + oy);
+                        bx1 = std::max(bx1, px + ox); by1 = std::max(by1, py + oy);
+                        float sx, sy;
+                        cam_.worldToScreen(px + ox, py + oy, canvasW_, canvasH_, &sx, &sy);
+                        // 其他 pin 所属单元描边
+                        if (node != selected_)
+                            fg->AddRect({canvasX_ + sx - 2.f, canvasY_ + sy - 2.f},
+                                        {canvasX_ + sx + 2.f, canvasY_ + sy + 2.f},
+                                        IM_COL32(120, 180, 255, 200));
+                    }
+                    // star 连到 net 引脚 bbox 中心
+                    float bcx = (bx0 + bx1) * 0.5f, bcy = (by0 + by1) * 0.5f;
+                    float sxc, syc;
+                    cam_.worldToScreen(bcx, bcy, canvasW_, canvasH_, &sxc, &syc);
+                    fg->AddLine({selSx, selSy}, {canvasX_ + sxc, canvasY_ + syc},
+                                IM_COL32(120, 180, 255, 220), 1.5f);
+                }
+            }
         }
     }
 
-    // ---- T8：位移向量场（抽样绘制，避免 35 万箭头糊满）
+    // ---- T21：位移向量场（参考位置→当前插值位置，末端落当前矩形，stride≤4000）
     if (compareOn_ && showVectors_ && src_ && geomUploaded_) {
-        FrameView fa, fb;
-        if (src_->frame(frameA_, fa) && src_->frame(frameB_, fb) && fa.valid() && fb.valid()) {
+        const PlaybackController::DisplayState ds = playback_.state();
+        int loIdx = std::max(0, ds.lo), hiIdx = ds.hi;
+        float useAlpha = ds.hi > ds.lo ? ds.alpha : 1.f;
+        if (ds.hi == ds.lo && ds.lo > 0) { loIdx = ds.lo - 1; hiIdx = ds.lo; }
+        FrameView flo, fhi;
+        src_->frame(loIdx, flo);
+        if (hiIdx > loIdx) src_->frame(hiIdx, fhi);
+        int refFrame = 0;
+        if (dispRefMode_ == 1) {
+            for (int i = (int)metas_.size() - 1; i >= 0; --i)
+                if (metas_[i].stage == "init") { refFrame = i; break; }
+        } else if (dispRefMode_ == 0) {
+            refFrame = loIdx;
+        } else {
+            refFrame = 0;
+        }
+        FrameView fref; bool haveRef = src_->frame(refFrame, fref) && fref.valid();
+        if (flo.valid()) {
             const int n = src_->scene().nodeCount;
-            const int stride = std::max(1, n / 4000);   // 最多约 4000 支箭头
+            const int stride = std::max(1, (n + 3999) / 4000);
             for (int i = 0; i < n; i += stride) {
-                const float dx = fb.x[i] - fa.x[i], dy = fb.y[i] - fa.y[i];
-                const float len = std::hypot(dx, dy);
-                if (len < 1e-3f) continue;
-                float sx0 = 0.f, sy0 = 0.f, sx1 = 0.f, sy1 = 0.f;
-                cam_.worldToScreen(fa.x[i], fa.y[i], canvasW_, canvasH_, &sx0, &sy0);
-                cam_.worldToScreen(fb.x[i], fb.y[i], canvasW_, canvasH_, &sx1, &sy1);
+                float cx = flo.x[i], cy = flo.y[i];
+                if (fhi.valid()) {
+                    cx += useAlpha * (fhi.x[i] - cx);
+                    cy += useAlpha * (fhi.y[i] - cy);
+                }
+                float rx = cx, ry = cy;
+                if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
+                if (std::hypot(cx - rx, cy - ry) < 1e-3f) continue;
+                float sx0, sy0, sx1, sy1;
+                cam_.worldToScreen(rx, ry, canvasW_, canvasH_, &sx0, &sy0);
+                cam_.worldToScreen(cx, cy, canvasW_, canvasH_, &sx1, &sy1);
                 const ImVec2 p0(canvasX_ + sx0, canvasY_ + sy0);
                 const ImVec2 p1(canvasX_ + sx1, canvasY_ + sy1);
                 fg->AddLine(p0, p1, IM_COL32(200, 40, 40, 200), 1.5f);
-                // R3(nit)：端点小箭头头（屏幕空间两支短刻线），位移过短则不画。
                 const float vx = p1.x - p0.x, vy = p1.y - p0.y;
                 const float vlen = std::hypot(vx, vy);
                 if (vlen > 6.f) {
@@ -970,10 +1196,48 @@ void App::drawCanvasPanel(unsigned dockId) {
             }
         }
     }
+    fg->PopClipRect();
+}
+
+// T22：可收起栏目（自绘 -/+ 小按钮，状态存 StateStorage 随 ini 记住）。
+static bool sectionHeader(const char* name) {
+    ImGui::PushID(name);
+    // T22：栏目收起状态写入独立 ini（跨进程持久），运行态用静态 map 同步。
+    static std::map<std::string, bool> s_open;
+    static bool s_loaded = false;
+    if (!s_loaded) {
+        s_loaded = true;
+        std::ifstream in("superplace-gui-sections.ini");
+        std::string line;
+        while (std::getline(in, line)) {
+            // 行格式："栏目名" 0/1（名字带空格用双引号）
+            if (line.empty() || line[0] != '"') continue;
+            size_t q = line.find('"', 1);
+            if (q == std::string::npos) continue;
+            std::string k = line.substr(1, q - 1);
+            int v = 0;
+            try { v = std::stoi(line.substr(q + 1)); } catch (...) { continue; }
+            s_open[k] = (v != 0);
+        }
+    }
+    auto it = s_open.find(name);
+    bool open = it == s_open.end() ? true : it->second;
+    char btn[8]; std::snprintf(btn, sizeof(btn), "%c", open ? '-' : '+');
+    if (ImGui::SmallButton(btn)) {
+        open = !open; s_open[name] = open;
+        std::ofstream out("superplace-gui-sections.ini", std::ios::trunc);
+        for (auto& [kk, vv] : s_open) out << '"' << kk << "\" " << (vv ? 1 : 0) << "\n";
+    }
+    ImGui::SameLine();
+    ImGui::SeparatorText(name);
+    ImGui::PopID();
+    return open;
 }
 
 void App::drawSidebar() {
     ImGui::Begin("控制");
+    // 每帧一次探测 nets/ 目录存在性（不触发 nets() 懒加载）。
+    const bool hasNets = src_ && src_->hasNetsAvailable();
 
     ImGui::SeparatorText("数据源");
     ImGui::SetNextItemWidth(-1);
@@ -988,13 +1252,49 @@ void App::drawSidebar() {
             status_ = "加载失败：" + err;
         }
     }
+    if (ImGui::SmallButton("重置布局")) layoutBuilt_ = false;
 
     if (src_) {
         const SceneInfo& sc = src_->scene();
 
         // 主功能：回放/时间轴放在数据源之后、总览之前（使用者打开即见播放控件）。
-        ImGui::SeparatorText("时间轴 / 回放");
-        {
+        if (sectionHeader("总览")) {
+        if (const SummaryTable* sum = src_->summary(); sum && !sum->empty()) {
+            // T22：关键指标直接显示，其余进默认收起的「全部字段」。
+            static const char* kKeys[] = {"hpwl", "overflow", "total_time_s", "finalHpwl",
+                                          "finalOverflow", "mLG displacement"};
+            auto isKey = [](const std::string& k) {
+                for (const char* d : kKeys)
+                    if (k.find(d) != std::string::npos) return true;
+                return false;
+            };
+            for (const auto& [key, val] : sum->entries) {
+                if (!isKey(key)) continue;
+                const char* label = summaryDisplayName(key);
+                ImGui::Text("%s", label ? label : key.c_str());
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
+                ImGui::Text("%s", formatSummaryValue(val).c_str());
+            }
+            if (ImGui::TreeNode("全部字段")) {
+                for (const auto& [key, val] : sum->entries) {
+                    const char* label = summaryDisplayName(key);
+                    ImGui::Text("%s", label ? label : key.c_str());
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
+                    ImGui::Text("%s", formatSummaryValue(val).c_str());
+                }
+                ImGui::TreePop();
+            }
+            if (!sum->durationsMs.empty()) {
+                ImGui::SeparatorText("阶段耗时 (ms)");
+                for (const auto& [k, v] : sum->durationsMs)
+                    ImGui::Text("%-16s %.3f", k.c_str(), v);
+            }
+        } else {
+            ImGui::TextWrapped("该 bundle 不含总览（无 summary.json）。");
+        }
+        }
+
+if (sectionHeader("时间轴 / 回放")) {
             const PlaybackController::DisplayState ds = playback_.state();
             double t01 = playback_.playheadGlobal01();
             const double tmin = 0.0, tmax = 1.0;
@@ -1030,14 +1330,14 @@ void App::drawSidebar() {
             if (ImGui::Button(playback_.playing() ? "暂停" : "播放"))
                 playback_.toggle();
             ImGui::SameLine();
-            if (ImGui::Button("|◀ 关键帧")) playback_.prevKeyframe();
+            if (ImGui::Button("|< keyframe")) playback_.prevKeyframe();
             ImGui::SameLine();
-            if (ImGui::Button("关键帧 ▶|")) playback_.nextKeyframe();
+            if (ImGui::Button("keyframe >|")) playback_.nextKeyframe();
             ImGui::SameLine();
             if (ImGui::Button("适应窗口")) needFit_ = true;
-            if (ImGui::Button("|◀ 阶段")) playback_.prevStage();
+            if (ImGui::Button("|< stage")) playback_.prevStage();
             ImGui::SameLine();
-            if (ImGui::Button("阶段 ▶|")) playback_.nextStage();
+            if (ImGui::Button("stage >|")) playback_.nextStage();
             ImGui::SameLine();
             ImGui::Checkbox("循环", &loopOn_);
             playback_.setLoop(loopOn_);
@@ -1055,29 +1355,7 @@ void App::drawSidebar() {
         }
 
         // ---- T1：总览（summary.json）。缺文件/解析失败显示提示，不崩不空。
-        ImGui::SeparatorText("总览");
-        if (const SummaryTable* sum = src_->summary(); sum && !sum->empty()) {
-            for (const auto& [key, val] : sum->entries) {
-                const char* label = summaryDisplayName(key);
-                const bool warn = summaryIsWarning(key, val);
-                ImGui::PushStyleColor(ImGuiCol_Text,
-                                      warn ? ImVec4(1.f, 0.2f, 0.2f, 1.f)
-                                           : ImGui::GetStyleColorVec4(ImGuiCol_Text));
-                ImGui::Text("%s", label ? label : key.c_str());
-                ImGui::SameLine(ImGui::GetContentRegionAvail().x - 120.f);
-                ImGui::Text("%s", formatSummaryValue(val).c_str());
-                ImGui::PopStyleColor();
-            }
-            if (!sum->durationsMs.empty()) {
-                ImGui::SeparatorText("阶段耗时 (ms)");
-                for (const auto& [k, v] : sum->durationsMs)
-                    ImGui::Text("%-16s %.3f", k.c_str(), v);
-            }
-        } else {
-            ImGui::TextWrapped("该 bundle 不含总览（无 summary.json）。");
-        }
-
-        ImGui::SeparatorText("图层");
+        if (sectionHeader("图层"))
         for (int k = 0; k < static_cast<int>(Kind::Count); ++k) {
             ImGui::PushID(k);
             const bool wasVisible = canvas_.layerVisible[k];
@@ -1099,11 +1377,12 @@ void App::drawSidebar() {
             ImGui::PopID();
         }
 
-        ImGui::SeparatorText("渲染 / 着色");
+        if (sectionHeader("渲染 / 着色")) {
         // T7：着色模式。net 数依赖 T10 的 nets.bin，当前 bundle 没有，明确禁用。
         {
             const char* cur = colorMode_ == ColorMode::Density ? "按局部密度"
                             : colorMode_ == ColorMode::Displacement ? "按帧间位移"
+                            : colorMode_ == ColorMode::NetCount ? "按 net 数"
                             : "按类别";
             if (ImGui::BeginCombo("着色", cur)) {
                 auto item = [&](ColorMode m, const char* name, bool enabled) {
@@ -1111,9 +1390,7 @@ void App::drawSidebar() {
                     if (ImGui::Selectable(name, colorMode_ == m && !compareOn_)) {
                         colorMode_ = m;
                         if (m == ColorMode::Displacement) {
-                            // 选位移着色等价于开启两帧对比（T8）
                             compareOn_ = true;
-                            frameB_ = src_->frameCount() - 1;
                         } else {
                             compareOn_ = false;
                         }
@@ -1124,10 +1401,22 @@ void App::drawSidebar() {
                 item(ColorMode::Kind, "按类别", true);
                 item(ColorMode::Density, "按局部密度（面积重叠）", true);
                 item(ColorMode::Displacement, "按帧间位移量", true);
-                ImGui::BeginDisabled(true);
-                ImGui::Selectable("按 net 数（需 T10 网表，当前不可用）");
-                ImGui::EndDisabled();
+                item(ColorMode::NetCount, hasNets ? "按 net 数" : "按 net 数（无网表）", hasNets);
+                if (!hasNets) {
+                    const std::string& e = src_->netsError();
+                    ImGui::TextDisabled("%s", e.empty() ? "bundle 未声明 nets：网表功能禁用" : e.c_str());
+                }
                 ImGui::EndCombo();
+            }
+            if (hasNets)
+                ImGui::SliderInt("net 高亮度数阈值", &netDegThreshold_, 10, 10000);
+            if (compareOn_) {
+                const char* refs[] = {"瞬时运动 |pos(hi)-pos(lo)|", "相对 init 结束", "相对输入（第0帧）"};
+                int prevRef = dispRefMode_;
+                ImGui::Combo("参考", &dispRefMode_, refs, IM_ARRAYSIZE(refs));
+                if (prevRef != dispRefMode_) dispRangeDirty_ = true;
+                ImGui::Checkbox("位移箭头", &showVectors_);
+                ImGui::TextDisabled("色表单位：设计坐标单位（一次回放固定）");
             }
         }
         if (colorMode_ != ColorMode::Kind && !compareOn_) {
@@ -1135,19 +1424,35 @@ void App::drawSidebar() {
             ImGui::Text("范围 %.3g ~ %.3g", lastValMin_, lastValMax_);
             ImVec2 p = ImGui::GetCursorScreenPos();
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilledMultiColor(p, {p.x + 160, p.y + 12},
-                                        IM_COL32(40, 70, 220, 255), IM_COL32(50, 200, 100, 255),
-                                        IM_COL32(50, 200, 100, 255), IM_COL32(235, 60, 50, 255));
+            // 与 canvas shader 同一组 viridis 停点
+            const float stops[5][3] = {{0.267f,0.005f,0.329f},{0.229f,0.322f,0.545f},
+                                       {0.127f,0.566f,0.550f},{0.369f,0.789f,0.383f},
+                                       {0.992f,0.906f,0.144f}};
+            for (int i = 0; i < 24; ++i) {
+                float t = i / 23.f;
+                int s = std::min(4, (int)(t * 4.f)); float lt = t * 4.f - s;
+                if (s >= 4) { s = 3; lt = 1.f; }
+                float r = stops[s][0]+lt*(stops[s+1][0]-stops[s][0]);
+                float g = stops[s][1]+lt*(stops[s+1][1]-stops[s][1]);
+                float b = stops[s][2]+lt*(stops[s+1][2]-stops[s][2]);
+                ImU32 col = IM_COL32((int)(r*255),(int)(g*255),(int)(b*255),255);
+                dl->AddRectFilled({p.x + 160*t, p.y}, {p.x + 160*(i+1)/23.f, p.y+12}, col);
+            }
             ImGui::Dummy({160, 12});
         } else if (compareOn_) {
             ImGui::Text("位移范围 %.3g ~ %.3g", lastValMin_, lastValMax_);
         }
-        ImGui::Checkbox("近景叠加密度热图", &heatmapOverlay_);
-        ImGui::Checkbox("远景自动 LOD 热力图", &lodAuto_);
+        ImGui::Checkbox("热力图图层", &heatmapOverlay_);
+        if (heatmapOverlay_)
+            ImGui::SetNextItemWidth(120), ImGui::SliderFloat("透明度", &heatmapAlpha_, 0.05f, 1.f, "%.2f");
         ImGui::SetNextItemWidth(120);
-        ImGui::SliderFloat("最小像素", &canvas_.minPixelSize, 0.5f, 4.f, "%.1f px");
+        ImGui::SliderFloat("最小显示尺寸（像素）", &canvas_.minPixelSize, 0.5f, 4.f, "%.1f px");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("全图视角下单元不足 1 像素，按此尺寸放大显示，避免碎成噪点");
 
-        ImGui::SeparatorText("统计");
+        }  // 渲染/着色
+
+        if (sectionHeader("统计")) {
         ImGui::Text("设计        %s", sc.benchmark.c_str());
         ImGui::Text("节点        %s", human(sc.nodeCount).c_str());
         ImGui::Text("core        %.0f x %.0f", sc.core.width(), sc.core.height());
@@ -1156,7 +1461,8 @@ void App::drawSidebar() {
         ImGui::Text("绘制        %.2f ms", drawMs_);
         ImGui::Text("位置上传    %.2f ms", canvas_.lastUploadMs());
         ImGui::Text("UI          %.1f fps", ImGui::GetIO().Framerate);
-        if (lodAuto_) ImGui::Text("LOD         %s", lodActive_ ? "热力图" : "真实矩形");
+        if (lodActive_) ImGui::TextUnformatted("LOD 热力图模式（放大后恢复矩形）");
+        }
     }
 
     ImGui::Separator();
@@ -1165,10 +1471,7 @@ void App::drawSidebar() {
 }
 
 void App::drawMetricsPanel() {
-    // 钉在视口左下（首帧固定，之后用户可拖动/重 dock/缩放）。
-    const ImVec2 vs = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(0, vs.y - 250.f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(vs.x * 0.70f, 250.f), ImGuiCond_FirstUseEver);
+    // T19：收敛曲线停靠进底部节点，不再浮动固定位置。
     ImGui::Begin("收敛曲线");
     const MetricsTable* m = src_ ? src_->metrics() : nullptr;
     if (!m || m->rowCount == 0) {
@@ -1326,44 +1629,27 @@ void App::drawInspectPanel() {
                                        (chip.height() / 128.f));
         ImGui::Text("bin       (%d, %d)", c, r);
     }
-    ImGui::End();
-}
-
-void App::drawComparePanel() {
-    const ImVec2 vs = ImGui::GetMainViewport()->Size;
-    ImGui::SetNextWindowPos(ImVec2(vs.x * 0.70f, vs.y - 250.f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(vs.x * 0.30f, 250.f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("帧对比");
-    if (!src_ || src_->frameCount() < 2) {
-        ImGui::TextWrapped("至少需要两帧才能对比。");
-        ImGui::End();
-        return;
-    }
-    const int last = src_->frameCount() - 1;
-    frameA_ = std::clamp(frameA_, 0, last);
-    frameB_ = std::clamp(frameB_, 0, last);
-
-    ImGui::Checkbox("启用两帧对比（位移着色 + 向量）", &compareOn_);
-    if (compareOn_) {
-        updateContinuousValues();
-        ImGui::SetNextItemWidth(-1);
-        ImGui::SliderInt("帧 A", &frameA_, 0, last, "%d");
-        ImGui::SetNextItemWidth(-1);
-        ImGui::SliderInt("帧 B", &frameB_, 0, last, "%d");
-        ImGui::Checkbox("显示位移向量", &showVectors_);
-
-        FrameView fa, fb;
-        if (src_->frame(frameA_, fa) && src_->frame(frameB_, fb)) {
-            double mx = 0., sum = 0.;
-            const int n = src_->scene().nodeCount;
-            for (int i = 0; i < n; ++i) {
-                const double d = std::hypot(fb.x[i] - fa.x[i], fb.y[i] - fa.y[i]);
-                mx = std::max(mx, d);
-                sum += d;
-            }
-            ImGui::Text("最大位移  %.3f", mx);
-            ImGui::Text("平均位移  %.3f", sum / n);
+    // T10：网表信息（引脚数/所连 net）。
+    if (const NetList* nl = src_->nets()) {
+        int p0 = nl->nodePinStart[selected_], p1 = nl->nodePinStart[selected_ + 1];
+        ImGui::SeparatorText("网表");
+        ImGui::Text("引脚数    %d", p1 - p0);
+        if (selectedNet_ >= 0 && ImGui::SmallButton("显示全部 net")) selectedNet_ = -1;
+        for (int pi = p0; pi < p1; ++pi) {
+            int pin = nl->nodePins[pi];
+            int net = nl->pinNet[pin];
+            if (net < 0) continue;
+            if (selectedNet_ >= 0 && net != selectedNet_) continue;
+            int deg = nl->netStart[net + 1] - nl->netStart[net];
+            const char* nm = (nl->hasNames && net < (int)nl->netNames.size())
+                                 ? nl->netNames[net].c_str() : "—";
+            float w = nl->hasWeights && net < (int)nl->netWeight.size() ? nl->netWeight[net] : 1.f;
+            char lbl[160]; std::snprintf(lbl, sizeof(lbl), "%s  度=%d  权重=%.2f", nm, deg, w);
+            if (ImGui::Selectable(lbl)) selectedNet_ = net;
         }
+    } else {
+        const std::string& e = src_->netsError();
+        ImGui::TextDisabled("%s", e.empty() ? "无网表（bundle 未声明 nets）" : e.c_str());
     }
     ImGui::End();
 }

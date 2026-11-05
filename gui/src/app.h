@@ -74,6 +74,7 @@ private:
 
     // ---- T4：懒重建空间索引（切帧后第一次点选时才建）
     void rebuildIndexIfDirty();
+    void rebuildIndexAtCurrent();   ///< T24：点击时用当前插值位置建索引
     // ---- T6：懒重建密度场
     void rebuildDensityIfDirty();
     void startPreDensity();          ///< setSource 后起后台线程预计算各关键帧密度
@@ -124,6 +125,7 @@ private:
     double drawMs_ = 0.0;
     std::vector<float> xs_;      ///< 曲线横轴（全局行序号），按需重建
     bool   layoutBuilt_ = false;
+    unsigned int dockId_ = 0;   ///< 宿主 dockspace id（T18 放行判定）
 
     // ---- T2：resize 保持视野（记住上一帧画布尺寸）
     float prevCanvasW_ = -1.f, prevCanvasH_ = -1.f;
@@ -132,6 +134,8 @@ private:
     SpatialIndex pickIndex_;
     bool indexDirty_ = true;
     int  selected_ = -1;
+    int  selectedNet_ = -1;   ///< T10：点检视面板 net 名后只高亮该 net
+    std::string selectedNameBuf_;       ///< T24：左上角读数显示选中名
     float downX_ = 0.f, downY_ = 0.f;   ///< 按下位置，区分单击与拖拽
 
     // ---- T5：metrics 行 ↔ 抽样帧映射
@@ -161,19 +165,23 @@ private:
     const float* lastPy_ = nullptr;
     int lastN_ = 0;
     unsigned long lastHmGen_ = 0;  ///< 已上传纹理对应的密度场版本，避免每帧重复上传
-    bool heatmapOverlay_ = true;   ///< 近景是否叠加半透明热力图
-    bool lodAuto_ = true;          ///< 远景自动切热力图
-    bool lodActive_ = false;       ///< 本帧是否处于 LOD（由阈值算出）
+    bool heatmapOverlay_ = false;  ///< T20：热力图叠加图层（默认关）
+    float heatmapAlpha_ = 0.35f;   ///< 热力图叠加透明度
+    bool lodActive_ = false;       ///< 本帧是否处于自动降级热力图（节点>100万且行高<1px）
 
     // ---- T7：着色模式（net 数因 T10 无 nets.bin 而禁用）
     ColorMode colorMode_ = ColorMode::Kind;
+    int  dispRefMode_ = 0;
+    float dispRange_ = -1.f;
+    bool  dispRangeDirty_ = true;
+    int  netDegThreshold_ = 100;  ///< T10 高亮跳过度数大于该值的 net
     float lastValMin_ = 0.f, lastValMax_ = 1.f;   ///< 连续色表当前范围（图例用）
 
     // ---- T8：两帧对比与位移向量
     bool compareOn_ = false;
-    int  frameA_ = 0, frameB_ = 1;
     bool showVectors_ = true;
     std::vector<float> dispValues_;
+    std::vector<float> netCountValues_;
     std::vector<float> densityScratch_;   ///< T6 着色复用缓冲，避免每帧堆分配
 };
 

@@ -20,6 +20,7 @@
 
 #include "viz/source.h"
 #include "viz/summary.h"
+#include "viz/nets.h"
 
 namespace fs = std::filesystem;
 
@@ -97,6 +98,20 @@ public:
     const SummaryTable* summary() const override { return hasSummary_ ? &summary_ : nullptr; }
     int  frameCount() const override { return static_cast<int>(frames_.size()); }
     const std::string& sourceName() const override { return name_; }
+
+    const NetList* nets() const override {
+        if (!netsTried_) loadNets();
+        return netList_ ? netList_.get() : nullptr;
+    }
+    bool hasNetsAvailable() const override {
+        // 以 scene.json 是否声明 nets 键为准，不猜目录。
+        std::error_code ec;
+        if (!fs::exists(dir_ / "scene.json", ec)) return false;
+        std::ifstream in(dir_ / "scene.json");
+        nlohmann::json j;
+        try { in >> j; } catch (...) { return false; }
+        return j.contains("nets");
+    }
 
     void prefetch(int center, int direction) override {
         if (frames_.empty()) return;
@@ -454,6 +469,117 @@ private:
         }
     }
 
+    void loadNets() const {
+        netsTried_ = true;
+        const fs::path nd = dir_ / "nets";
+        if (!fs::exists(nd)) return;  // 无网表，功能禁用
+        try {
+            auto readInts = [](const fs::path& p, size_t bytes) -> std::vector<int> {
+                std::ifstream in(p, std::ios::binary);
+                if (!in) return {};
+                std::vector<int> v(bytes / 4);
+                in.read(reinterpret_cast<char*>(v.data()), static_cast<std::streamsize>(bytes));
+                if (in.gcount() != static_cast<std::streamsize>(bytes)) return {};
+                return v;
+            };
+            auto readFloats = [](const fs::path& p, size_t bytes) -> std::vector<float> {
+                std::ifstream in(p, std::ios::binary);
+                if (!in) return {};
+                std::vector<float> v(bytes / 4);
+                in.read(reinterpret_cast<char*>(v.data()), static_cast<std::streamsize>(bytes));
+                if (in.gcount() != static_cast<std::streamsize>(bytes)) return {};
+                return v;
+            };
+            // scene.json nets 元数据
+            int M = 0, P = 0; bool hasNames = false, hasWeights = false;
+            std::ifstream sin(dir_ / "scene.json");
+            nlohmann::json j; sin >> j;
+            if (j.contains("nets")) {
+                const auto& nj = j["nets"];
+                M = nj.value("netCount", 0); P = nj.value("pinCount", 0);
+                hasNames = nj.value("hasNames", false);
+                hasWeights = nj.value("hasWeights", false);
+            }
+            if (M <= 0 || P < 0) return;
+            auto ns = readInts(nd / "net_start.bin", sizeof(int) * (size_t)(M + 1));
+            auto np = readInts(nd / "net_pins.bin", sizeof(int) * (size_t)P);
+            auto pn = readInts(nd / "pin_node.bin", sizeof(int) * (size_t)P);
+            auto po = readFloats(nd / "pin_offset.bin", sizeof(float) * 2 * (size_t)P);
+            if (ns.empty() || np.empty() || pn.empty() || po.empty()) return;
+            // 校验
+            if (ns[0] != 0 || ns[M] != P) return;
+            const int nodeCount = scene_.nodeCount;
+            std::vector<bool> seen(P, false);
+            for (int k = 0; k < M; ++k) {
+                if (ns[k + 1] < ns[k]) return;
+                for (int p = ns[k]; p < ns[k + 1]; ++p) {
+                    if (np[p] < 0 || np[p] >= P || seen[np[p]]) return;
+                    seen[np[p]] = true;
+                }
+            }
+            for (int p = 0; p < P; ++p)
+                if (pn[p] < 0 || pn[p] >= nodeCount) return;
+            for (size_t i = 0; i < po.size(); ++i)
+                if (!std::isfinite(po[i])) return;
+            auto nl = std::make_unique<NetList>();
+            nl->netCount = M; nl->pinCount = P;
+            nl->hasNames = hasNames; nl->hasWeights = hasWeights;
+            nl->netStart = std::move(ns); nl->netPins = std::move(np);
+            nl->pinNode = std::move(pn); nl->pinOffset = std::move(po);
+            // 偏移更新列表
+            if (j.contains("nets") && j["nets"].contains("offsetUpdates")) {
+                int prevFrame = -1;
+                for (const auto& u : j["nets"]["offsetUpdates"]) {
+                    NetList::OffsetUpdate ou;
+                    ou.frame = u.value("frame", -1);
+                    ou.count = u.value("count", 0);
+                    ou.file = u.value("file", "");
+                    if (ou.frame <= prevFrame || ou.count <= 0) return;
+                    prevFrame = ou.frame;
+                    nl->offsetUpdates.push_back(std::move(ou));
+                }
+            }
+            // net 名/权重
+            if (hasNames) {
+                std::ifstream in(nd / "net_names.txt");
+                std::string line;
+                for (int k = 0; k < M; ++k) {
+                    if (!std::getline(in, line)) return;
+                    nl->netNames.push_back(line);
+                }
+            }
+            if (hasWeights) {
+                auto w = readFloats(nd / "net_weight.bin", sizeof(float) * (size_t)M);
+                if (w.empty()) return;
+                nl->netWeight = std::move(w);
+            }
+            // 两趟计数 O(P) 建 node→pins 与 pin→net
+            nl->nodePinStart.assign((size_t)nodeCount + 2, 0);
+            nl->nodePins.resize(P);
+            nl->pinNet.assign(P, -1);
+            for (int p = 0; p < P; ++p) {
+                nl->nodePinStart[(size_t)nl->pinNode[p] + 1]++;
+            }
+            for (int n = 0; n <= nodeCount; ++n)
+                nl->nodePinStart[n + 1] += nl->nodePinStart[n];
+            std::vector<int> cursor = nl->nodePinStart;
+            for (int k = 0; k < M; ++k)
+                for (int p = nl->netStart[k]; p < nl->netStart[k + 1]; ++p)
+                    nl->pinNet[nl->netPins[p]] = k;
+            for (int p = 0; p < P; ++p) {
+                int node = nl->pinNode[p];
+                nl->nodePins[cursor[(size_t)node]++] = p;
+            }
+            netList_ = std::move(nl);
+        } catch (const std::exception& e) {
+            netList_.reset();
+            netsErr_ = std::string("网表解析失败: ") + e.what();
+        } catch (...) {
+            netList_.reset();
+            netsErr_ = "网表文件校验失败（非法大小/排列/范围）";
+        }
+    }
+
     static constexpr int kCacheFrames = 24;
 
     fs::path     dir_;
@@ -476,6 +602,12 @@ private:
     std::atomic<int>             wantCenter_{0};
     std::atomic<int>             wantDir_{1};
     std::atomic_flag             workerStarted_ = ATOMIC_FLAG_INIT;
+
+    // T10 网表（§3.9）：首次调用 nets() 才加载；失败降级 nullptr。
+    mutable bool netsTried_ = false;
+    mutable std::unique_ptr<NetList> netList_;
+    mutable std::string netsErr_;
+    const std::string& netsError() const override { return netsErr_; }
 };
 
 }  // namespace

@@ -31,7 +31,7 @@ scripts/viz.sh path/to/viz           # 直接打开一个已有的 bundle 目录
 | --- | --- |
 | `--rerecord` | 即使录过也重新录（算法代码改过之后用） |
 | `--stride N` | 每 N 轮迭代录一帧，默认 10 |
-| 其余参数 | 原样交给查看器，例如 `--frame -1`、`--compare`、`--bench-ui 800`（见下文参数表） |
+| 其余参数 | 原样交给查看器，例如 `--frame -1`、`--width 1280 --height 720`、`--bench-ui 800`（见下文参数表） |
 
 > - 只看合成样本或现成 bundle 时**只需要前端依赖**；按设计名 / `.aux` 打开且需要录制时，
 >   还要能构建算法侧（FFTW、Eigen、OpenMP 等，见根目录 `README.md`），并需要
@@ -53,7 +53,7 @@ scripts/viz.sh path/to/viz           # 直接打开一个已有的 bundle 目录
 | T5 | 按阶段分色收敛曲线、时间轴游标、点曲线跳帧；metrics 行↔抽样帧按 Exact/Nearest/Approx/Unavailable 四级诚实映射，未知阶段不跨跳，缺失值 NaN 断线不补 0 |
 | T6 | 节点面积重叠密度热图（可视化面积占比，**不是**优化器 τ/local smoothing）；远景按行高像素阈值自动 LOD 切热力图 |
 | T7 | 按类别 / 按局部密度 / 按帧间位移 连续色表着色 + 图例；**按 net 数因 T10 无 nets.bin 明确禁用**，不伪造 |
-| T8 | 两帧 A/B 对比、位移着色、抽样位移向量（≤约 4000 支）、最大/平均位移 |
+| T8/T21 | 位移着色（参考三选：瞬时/相对init结束/相对输入）+ 位移箭头图层；独立帧对比窗口已移除 |
 | T13 | 零依赖无头单测（`viz_tests`，不引入 gtest），覆盖相机/类别优先级/bundle 解析/空间索引/密度/帧映射/比例尺 |
 | T14 | **连续回放**：按全局 t 线性插值、相邻 t 相等或 `breakBefore` 硬切、`iter==-1` 里程碑停留 0.5s、缺 t 退化为帧序；播放/暂停/调速（轮/秒）/循环/关键帧与阶段前后跳转/拖动 scrub；统计取最近关键帧、停下按插值重算并诚实标注；热力图固定标尺 |
 | T15 | **FrameView 共享零拷贝所有权**：`shared_ptr<const vector<float>>` 持数据，LRU 淘汰只放缓存引用不影响持帧者；`frameInfo()` 只读元数据不读位置文件，消除启动读盘 |
@@ -124,12 +124,12 @@ ctest --test-dir gui/build --output-on-failure
 | `--bench-csv FILE` | 配合 `--bench-ui`，把每帧 frame,render_ms,swap_ms,globalT,lo,hi,alpha,playing 写入 FILE 供独立复算 |
 | `--screenshot out.ppm` | 保存截图（PPM，可转 PNG 查看） |
 | `--shot-after 秒` | 跑 UI 到点自动截图退出，用于脚本化出图 |
-| `--compare` | 自检：启动即开启两帧对比（A=0, B=最后一帧），便于无交互验证 T8 |
+| `--compare` | 已移除（T21 改着色模式+参考三选） |
 
 操作：左键拖拽平移，滚轮以光标为锚缩放，单击节点点选（点空白取消），
 "适应窗口"按 chip 重新 fit；右侧"控制"面板切图层/着色模式/回放（播放暂停、
 关键帧/阶段跳转、循环、速度滑条、阶段色块），底部"收敛曲线"看分阶段
-HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
+HPWL/overflow 并双向联动游标；位移着色为「按帧间位移」模式 + 参考三选。
 
 ## 数据与目录
 
@@ -170,9 +170,8 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
 
 ## 实现状态 vs 验收状态（分开陈述）
 
-- **已实现并有自动证据**：T1、T3–T8、T13、T14、T15、T16、T17；无头单测 **1164 项 0 失败**
-  （设 `VIZ_REF_BUNDLE`/`VIZ_REF_JSON` 带密度真值时 **1180 项 0 失败**）、
-  ctest 1/1 通过；干净 Release 目录重建（删 build_precommit_dev 后重新 configure）成功。
+- **已实现并有自动证据**：T1、T3–T8、T13–T17、T18–T24、T10；无头单测 **1194 项 0 失败**
+  （独立 clean 含密度回归 **1210 项 0 失败**）、ctest 1/1 通过；
 - **T15 红测**：旧实现取第 3 帧后再取 26 帧挤出 24 帧 LRU，断言原数据逐位不变——
   旧实现失败（读出 `25000+i` 而非 `3000+i`，证明缓冲被别帧复用）；修复后 0 失败。
   红测源码在 `gui/test/test_frameview_lifetime.cpp`。
@@ -197,6 +196,18 @@ HPWL/overflow 并双向联动游标、"帧对比"做 A/B 位移。
     p95 35.99ms 略超；COLD 381 帧 mean 28.04/p95 42.35；WARM 619 帧 mean 20.07/p95 30.95（<33）。
     回退原因：finite 全帧首扫 + worker 预热/磁盘 IO 竞争，属软环境 IO 瓶颈，非算法回归；保留正确性校验。
 
+
+## 2026-11-04 试用反馈修复（T18–T24 + T10 网表前端）
+
+- **T18**：画布任意位置可缩放/平移/点选（`clip=false` 悬停判定），滚轮缩放 1.28×，F 键适应窗口。
+- **T10 网表**：`nets/` 按 §3.9 懒加载与校验，CSR 反查 + 偏移累积；点选 net 星形高亮、度数阈值可调、检视面板引脚数/net 名/度数/权重、「按 net 数」着色。
+- **T24**：检视独立停靠节点（右栏上下切分），点选 5px 屏幕容差，选中框最小 8px 并跟随 lo/hi/alpha 插值。
+- **T19**：底部收敛曲线停靠进 dock，画布=中央节点矩形，坐标轴画背景层贴边，「重置布局」按钮。
+- **T20**：默认画真实矩形；热力图改图层开关（默认关、可调透明度）；>100 万且行高<1px 自动降级并提示；viridis 色条图例。
+- **T21**：删独立帧对比窗口与 `--compare`；位移着色参考三选（瞬时/相对 init 结束/相对输入），色表固定 p99，位移箭头图层。
+- **T22**：栏目 -/+ 收起（状态写入 sidecar 文件 `superplace-gui-sections.ini`，跨进程持久），顺序 数据源→总览→时间轴→图层→渲染→统计，总览关键指标 + 全部字段子栏。
+- **T23**：窗口标题英文 superPlace Viewer，跳转按钮 ASCII。
+
 ## 边界
 
 **并发与 TSan**：`DensityCache` 的字段/ready/done 由 mutex 保护，worker 异常/失败帧不 terminate、
@@ -212,3 +223,19 @@ bundle 格式契约）；`frameInfo()` 只读元数据不触发位置 IO；无 n
 
 **只改 `gui/` 下的文件。** 不碰算法侧 `src/`、`test/`、根 `CMakeLists.txt`、`configs/`、
 `scripts/make_viz.py`、`work_report/`。本工程始终零算法依赖（FFTW/Eigen/PNG/OpenMP 一概不链）。
+
+## 已知局限（冻结候选）
+
+- 性能数字为本开发机 llvmpipe 软渲染下的 --bench-ui 实测，非硬件加速上限；2M 节点热图图层指标不替代 2M 矩形模式指标。
+- 真实鼠标点击/拖拽交互未在无头环境实测（仅 CLI 截图与无头 probe）；dockspace 三尺寸布局为代码审查结论。
+- T23 收敛曲线横轴当前为 metrics 行号，未改全局迭代轮数（可选项）。
+- 证据路径：results/gui-final-review/（非 /tmp）。
+
+## 2026-11-05 冻结候选修复记录（独立 clean 实测）
+
+- 无头单测 **1194 项 0 失败**（含密度回归独立 clean **1210 项 0 失败**），ctest 1/1，算法侧 clean Release 13/13，-Wall -Wextra 自有代码 0 warning。
+- T21 位移参考纯逻辑抽出 `viz/displacement.h`：瞬时 = |hi−lo|（与 alpha 无关）；停在 breakBefore 关键帧时取 prev→current 硬跳变；p99 取末帧相对参考帧一次固定。
+- T20 shader 与面板/画布色条统一为同一组 viridis 5 停点。
+- T10 网表：`hasNetsAvailable()` 以 scene.json `nets` 键判定不触发加载；`netsError()` 显示坏文件具体原因；NetCount 真算每节点不同 net 个数；star 高亮遍历 net 全部引脚 bbox 中心连线、其他 pin 描边、net Selectable filter。
+- T24 点击时用当前插值坐标重建 pick 索引；T22 sidecar ini 跨进程持久；CLI 未知 flag 报错退出 2。
+- newblue1 矩形模式（llvmpipe 软渲染，--bench-ui playing）120 帧：**ALL mean 127.81ms / p50 129.53 / p95 154.82 / max 166.88**，120/120 帧 >33ms，lod 0。此为软渲染环境数字，非硬件加速上限。

@@ -482,6 +482,30 @@ void App::updateContinuousValues() {
         }
     }
 
+    if (colorMode_ == ColorMode::NetCount && src_->nets()) {
+        // 每节点所连不同 net 个数（同 net 多引脚算一次），懒缓存。
+        if ((int)netCountValues_.size() != n) {
+            netCountValues_.assign(n, 0.f);
+            const NetList* nl = src_->nets();
+            for (int net = 0; net < nl->netCount; ++net) {
+                int q0 = nl->netStart[net], q1 = nl->netStart[net + 1];
+                std::vector<int> nodes;
+                for (int q = q0; q < q1; ++q) nodes.push_back(nl->pinNode[nl->netPins[q]]);
+                std::sort(nodes.begin(), nodes.end());
+                nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+                for (int nd : nodes)
+                    if (nd >= 0 && nd < n) netCountValues_[nd] += 1.f;
+            }
+        }
+        float mx = 1.f;
+        for (float v : netCountValues_) mx = std::max(mx, v);
+        canvas_.setColorMode(ColorMode::NetCount);
+        canvas_.setContinuousValues(netCountValues_.data(), n);
+        canvas_.setValueRange(0.f, mx);
+        lastValMin_ = 0.f; lastValMax_ = mx;
+        return;
+    }
+
     if (colorMode_ == ColorMode::Density) {
         rebuildDensityIfDirty();
         densityScratch_.assign(static_cast<size_t>(n), 0.f);

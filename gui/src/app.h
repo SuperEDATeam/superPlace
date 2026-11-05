@@ -178,6 +178,7 @@ private:
     bool compareOn_ = false;
     bool showVectors_ = true;
     std::vector<float> dispValues_;
+    std::vector<float> netCountValues_;   ///< T10 每节点不同 net 个数缓存
     std::vector<float> densityScratch_;   ///< T6 着色复用缓冲，避免每帧堆分配
 };
 

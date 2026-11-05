@@ -65,7 +65,7 @@ struct Camera {
 };
 
 /// 着色/着色模式（T7）。Kind 是默认按类别；其余两种走连续色表。
-enum class ColorMode : int { Kind = 0, Density = 1, Displacement = 2 };
+enum class ColorMode : int { Kind = 0, Density = 1, Displacement = 2, NetCount = 3 };
 
 class Canvas {
 public:

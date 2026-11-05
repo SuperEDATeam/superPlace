@@ -60,6 +60,10 @@ int main(int argc, char** argv) {
             opt.startFrame = std::atoi(argv[++i]);
             continue;
         }
+        if (a.rfind("--", 0) == 0) {
+            std::fprintf(stderr, "superplace-viz: 未知参数 '%s'（用 -h 查看帮助）\n", a.c_str());
+            return 2;
+        }
         opt.initialBundle = a;
     }
 

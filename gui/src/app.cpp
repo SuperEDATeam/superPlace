@@ -577,6 +577,7 @@ int App::run() {
             status_ = "加载失败：" + err;
         }
     }
+
     std::strncpy(pathBuf_, bundlePath_.c_str(), sizeof(pathBuf_) - 1);
 
     if (opt_.benchFrames > 0) return runBench();
@@ -904,20 +905,10 @@ void App::drawCanvasPanel(unsigned dockId) {
     const ImVec2 lo(canvasX_, canvasY_);
     const ImVec2 hi(canvasX_ + canvasW_, canvasY_ + canvasH_);
     // T18：clip=false 不受隐形 Debug##Default 窗口裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
-    // T18：clip=false 不受裁剪框截断。中央透明区的宿主 dockspace 背景窗放行，
-    // 任何真实面板/浮窗/弹窗/modal 悬停都拦截。
+    // T18：clip=false 不受隐形 Debug##Default 裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
     const bool mouseInCanvas = ImGui::IsMouseHoveringRect(lo, hi, /*clip=*/false);
-    bool overCanvas = mouseInCanvas;
-    if (mouseInCanvas && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
-        ImGuiContext& g = *ImGui::GetCurrentContext();
-        ImGuiWindow* h = g.HoveredWindow;
-        // 宿主 dockspace 窗（DockSpaceOverViewport 创建）id 等于 dockId 或名字含 DockSpace；
-        // 它不是真实交互面板，放行。其余 hovered 窗（面板/浮窗/弹窗）一律拦。
-        bool isHost = h && (h->ID == (ImGuiID)dockId_ ||
-                            strstr(h->Name, "DockSpace") != nullptr ||
-                            strstr(h->Name, "DockNode") != nullptr);
-        overCanvas = isHost;
-    }
+    const bool overCanvas = mouseInCanvas &&
+        !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
     // 拖拽平移：只有「按下时就在画布上」才允许，避免从面板拖入误平移。
     static bool panning = false;
     if (overCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1256,7 +1247,7 @@ void App::drawSidebar() {
         const SceneInfo& sc = src_->scene();
 
         // 主功能：回放/时间轴放在数据源之后、总览之前（使用者打开即见播放控件）。
-        if (sectionHeader("总览"))
+        if (sectionHeader("总览")) {
         if (const SummaryTable* sum = src_->summary(); sum && !sum->empty()) {
             // T22：关键指标直接显示，其余进默认收起的「全部字段」。
             static const char* kKeys[] = {"hpwl", "overflow", "total_time_s", "finalHpwl",
@@ -1290,7 +1281,7 @@ void App::drawSidebar() {
         } else {
             ImGui::TextWrapped("该 bundle 不含总览（无 summary.json）。");
         }
-
+        }
 
 if (sectionHeader("时间轴 / 回放")) {
             const PlaybackController::DisplayState ds = playback_.state();

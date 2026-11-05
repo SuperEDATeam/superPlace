@@ -104,9 +104,13 @@ public:
         return netList_ ? netList_.get() : nullptr;
     }
     bool hasNetsAvailable() const override {
-        // 仅探测 nets/ 目录存在，不加载数据。
+        // 以 scene.json 是否声明 nets 键为准，不猜目录。
         std::error_code ec;
-        return std::filesystem::is_directory(dir_ / "nets", ec);
+        if (!fs::exists(dir_ / "scene.json", ec)) return false;
+        std::ifstream in(dir_ / "scene.json");
+        nlohmann::json j;
+        try { in >> j; } catch (...) { return false; }
+        return j.contains("nets");
     }
 
     void prefetch(int center, int direction) override {
@@ -567,8 +571,12 @@ private:
                 nl->nodePins[cursor[(size_t)node]++] = p;
             }
             netList_ = std::move(nl);
+        } catch (const std::exception& e) {
+            netList_.reset();
+            netsErr_ = std::string("网表解析失败: ") + e.what();
         } catch (...) {
             netList_.reset();
+            netsErr_ = "网表文件校验失败（非法大小/排列/范围）";
         }
     }
 
@@ -598,6 +606,8 @@ private:
     // T10 网表（§3.9）：首次调用 nets() 才加载；失败降级 nullptr。
     mutable bool netsTried_ = false;
     mutable std::unique_ptr<NetList> netList_;
+    mutable std::string netsErr_;
+    const std::string& netsError() const override { return netsErr_; }
 };
 
 }  // namespace

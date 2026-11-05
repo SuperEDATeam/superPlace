@@ -57,8 +57,10 @@ public:
 
     /// T10：网表（§3.9）。无 nets/ 或校验失败返回 nullptr。首次调用才加载。
     virtual const NetList* nets() const { return nullptr; }
-    /// 仅探测 bundle 是否含 nets/（不触发加载），用于菜单可选。
+    /// 仅探测 bundle 是否声明 nets（不触发加载）。
     virtual bool hasNetsAvailable() const { return false; }
+    /// 网表加载失败的具体原因（成功/无网表为空串）。
+    virtual const std::string& netsError() const { static std::string e; return e; }
 
 protected:
     IPlacementSource() = default;

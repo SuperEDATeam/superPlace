@@ -74,6 +74,7 @@ private:
 
     // ---- T4：懒重建空间索引（切帧后第一次点选时才建）
     void rebuildIndexIfDirty();
+    void rebuildIndexAtCurrent();   ///< T24：点击时用当前插值位置建索引
     // ---- T6：懒重建密度场
     void rebuildDensityIfDirty();
     void startPreDensity();          ///< setSource 后起后台线程预计算各关键帧密度
@@ -179,7 +180,7 @@ private:
     bool compareOn_ = false;
     bool showVectors_ = true;
     std::vector<float> dispValues_;
-    std::vector<float> netCountValues_;   ///< T10 每节点不同 net 个数缓存
+    std::vector<float> netCountValues_;
     std::vector<float> densityScratch_;   ///< T6 着色复用缓冲，避免每帧堆分配
 };
 

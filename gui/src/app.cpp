@@ -412,6 +412,26 @@ void App::rebuildIndexIfDirty() {
     }
 }
 
+// T24：点击时用当前插值位置强制重建索引（不依赖 statsSource 关键帧）。
+void App::rebuildIndexAtCurrent() {
+    if (!src_) return;
+    const PlaybackController::DisplayState ds = playback_.state();
+    FrameView lo, hi;
+    src_->frame(std::max(0, ds.lo), lo);
+    if (ds.hi > ds.lo) src_->frame(ds.hi, hi);
+    const int n = src_->scene().nodeCount;
+    interpX_.assign(n, 0.f); interpY_.assign(n, 0.f);
+    for (int i = 0; i < n; ++i) {
+        float x = lo.x[i], y = lo.y[i];
+        if (hi.valid()) {
+            x += ds.alpha * (hi.x[i] - x);
+            y += ds.alpha * (hi.y[i] - y);
+        }
+        interpX_[i] = x; interpY_[i] = y;
+    }
+    pickIndex_.build(src_->scene().chip, interpX_.data(), interpY_.data(), src_->geometry());
+}
+
 void App::rebuildDensityIfDirty() {
     if (!densityDirty_ || !src_) return;
     const auto t0 = std::chrono::steady_clock::now();
@@ -470,10 +490,16 @@ void App::updateContinuousValues() {
                                  haveRef ? fref.y : nullptr};
             viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R,
                                 ds.hi > ds.lo ? ds.alpha : 0.f, n, dispValues_);
-            // 固定色表范围：参考切换时算一次末帧 p99（缓存），不每帧 sort。
+            // 固定色表范围：末帧(frameCount-1)相对参考帧 p99，一次回放内不变。
             if (dispRangeDirty_ || dispRange_ <= 0.f) {
+                FrameView flast, flref;
+                bool haveLast = src_->frame(src_->frameCount() - 1, flast) && flast.valid();
+                bool haveRef2 = src_->frame(refFrame, flref) && flref.valid();
+                viz::FrameViewLite L2{haveLast ? flast.x : nullptr, haveLast ? flast.y : nullptr};
+                viz::FrameViewLite H2{nullptr, nullptr};
+                viz::FrameViewLite R2{haveRef2 ? flref.x : nullptr, haveRef2 ? flref.y : nullptr};
                 std::vector<float> mags;
-                viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R, 1.f, n, mags);
+                viz::dispMagnitudes((viz::DispRef)dispRefMode_, L2, H2, R2, 0.f, n, mags);
                 dispRange_ = std::max(1e-6f, viz::percentile(mags, 0.99));
                 dispRangeDirty_ = false;
             }
@@ -897,7 +923,7 @@ void App::drawCanvasPanel(unsigned dockId) {
             float wx = 0.f, wy = 0.f;
             cam_.screenToWorld(io.MousePos.x - canvasX_, io.MousePos.y - canvasY_,
                                canvasW_, canvasH_, &wx, &wy);
-            rebuildIndexIfDirty();
+            rebuildIndexAtCurrent();
             // T24：5px 屏幕容差（5/scale），先真实几何再容差内最近。
             selected_ = pickIndex_.pickTolerant(wx, wy, 5.f / cam_.scale, canvas_.layerVisible);
         }
@@ -1053,6 +1079,7 @@ void App::drawCanvasPanel(unsigned dockId) {
             if (const NetList* nl = src_->nets()) {
                 const std::vector<float>* off = nl->pinOffsetForFrame(std::max(0, ds.lo), bundlePath_);
                 FrameView loF; bool haveLo = src_->frame(std::max(0, ds.lo), loF) && loF.valid();
+                FrameView hiF; bool haveHi = ds.hi > ds.lo && src_->frame(ds.hi, hiF) && hiF.valid();
                 // 收集选中节点所属的去重 net
                 std::vector<int> netsOfSel;
                 auto sp0 = nl->nodePinStart[selected_], sp1 = nl->nodePinStart[selected_ + 1];
@@ -1083,6 +1110,10 @@ void App::drawCanvasPanel(unsigned dockId) {
                         float px = cx, py = cy;
                         if (haveLo && node >= 0 && node < src_->scene().nodeCount) {
                             px = loF.x[node]; py = loF.y[node];
+                            if (haveHi) {
+                                px += ds.alpha * (hiF.x[node] - px);
+                                py += ds.alpha * (hiF.y[node] - py);
+                            }
                         }
                         bx0 = std::min(bx0, px + ox); by0 = std::min(by0, py + oy);
                         bx1 = std::max(bx1, px + ox); by1 = std::max(by1, py + oy);
@@ -1123,7 +1154,7 @@ void App::drawCanvasPanel(unsigned dockId) {
         FrameView fref; bool haveRef = src_->frame(refFrame, fref) && fref.valid();
         if (flo.valid()) {
             const int n = src_->scene().nodeCount;
-            const int stride = std::max(1, n / 4000);
+            const int stride = std::max(1, (n + 3999) / 4000);
             for (int i = 0; i < n; i += stride) {
                 float cx = flo.x[i], cy = flo.y[i];
                 if (fhi.valid() && ds.hi > ds.lo) {

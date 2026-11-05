@@ -224,3 +224,10 @@ bundle 格式契约）；`frameInfo()` 只读元数据不触发位置 IO；无 n
 
 **只改 `gui/` 下的文件。** 不碰算法侧 `src/`、`test/`、根 `CMakeLists.txt`、`configs/`、
 `scripts/make_viz.py`、`work_report/`。本工程始终零算法依赖（FFTW/Eigen/PNG/OpenMP 一概不链）。
+
+## 已知局限（冻结候选）
+
+- 性能数字为本开发机 llvmpipe 软渲染下的 --bench-ui 实测，非硬件加速上限；2M 节点热图图层指标不替代 2M 矩形模式指标。
+- 真实鼠标点击/拖拽交互未在无头环境实测（仅 CLI 截图与无头 probe）；dockspace 三尺寸布局为代码审查结论。
+- T23 收敛曲线横轴当前为 metrics 行号，未改全局迭代轮数（可选项）。
+- 证据路径：results/gui-final-review/（非 /tmp）。

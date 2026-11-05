@@ -170,9 +170,8 @@ HPWL/overflow 并双向联动游标；位移着色为「按帧间位移」模式
 
 ## 实现状态 vs 验收状态（分开陈述）
 
-- **已实现并有自动证据**：T1、T3–T8、T13、T14、T15、T16、T17；无头单测 **1184 项 0 失败**
-  （设 `VIZ_REF_BUNDLE`/`VIZ_REF_JSON` 带密度真值时 **1180 项 0 失败**）、
-  ctest 1/1 通过；干净 Release 目录重建（删 build_precommit_dev 后重新 configure）成功。
+- **已实现并有自动证据**：T1、T3–T8、T13–T17、T18–T24、T10；无头单测 **1194 项 0 失败**
+  （独立 clean 含密度回归 **1210 项 0 失败**）、ctest 1/1 通过；
 - **T15 红测**：旧实现取第 3 帧后再取 26 帧挤出 24 帧 LRU，断言原数据逐位不变——
   旧实现失败（读出 `25000+i` 而非 `3000+i`，证明缓冲被别帧复用）；修复后 0 失败。
   红测源码在 `gui/test/test_frameview_lifetime.cpp`。
@@ -232,12 +231,11 @@ bundle 格式契约）；`frameInfo()` 只读元数据不触发位置 IO；无 n
 - T23 收敛曲线横轴当前为 metrics 行号，未改全局迭代轮数（可选项）。
 - 证据路径：results/gui-final-review/（非 /tmp）。
 
-## 2026-11-05 冻结候选修复记录（待独立测试填最终数字）
+## 2026-11-05 冻结候选修复记录（独立 clean 实测）
 
-- T21 位移参考纯逻辑抽出 `viz/displacement.h`：瞬时 = |hi−lo|（与 alpha 无关）；停在 breakBefore 关键帧时取 prev→current 硬跳变；p99 取末帧相对参考帧一次固定，切参考/切 bundle 失效。
+- 无头单测 **1194 项 0 失败**（含密度回归独立 clean **1210 项 0 失败**），ctest 1/1，算法侧 clean Release 13/13，-Wall -Wextra 自有代码 0 warning。
+- T21 位移参考纯逻辑抽出 `viz/displacement.h`：瞬时 = |hi−lo|（与 alpha 无关）；停在 breakBefore 关键帧时取 prev→current 硬跳变；p99 取末帧相对参考帧一次固定。
 - T20 shader 与面板/画布色条统一为同一组 viridis 5 停点。
-- T10 网表：`hasNetsAvailable()` 只读探测 nets/ 不触发加载；NetCount 真算每节点不同 net 个数；star 高亮遍历选中 net 全部引脚、bbox 中心连线、其他 pin 描边、net Selectable filter；偏移缓存只读引用不每帧拷贝。
-- T24 点击时用当前插值坐标重建 pick 索引（非 statsSource 关键帧）。
-- T22 sidecar ini 跨进程持久。
-- CLI 未知 `--flag` 报错退出 2；`--compare` 已移除。
-- 无头单测数字待独立 clean 测试回报后填入，本处不预测。
+- T10 网表：`hasNetsAvailable()` 以 scene.json `nets` 键判定不触发加载；`netsError()` 显示坏文件具体原因；NetCount 真算每节点不同 net 个数；star 高亮遍历 net 全部引脚 bbox 中心连线、其他 pin 描边、net Selectable filter。
+- T24 点击时用当前插值坐标重建 pick 索引；T22 sidecar ini 跨进程持久；CLI 未知 flag 报错退出 2。
+- newblue1 矩形模式（llvmpipe 软渲染，--bench-ui playing）120 帧：**ALL mean 127.81ms / p50 129.53 / p95 154.82 / max 166.88**，120/120 帧 >33ms，lod 0。此为软渲染环境数字，非硬件加速上限。

@@ -86,6 +86,10 @@ void Config::loadJson(const std::string& path) {
     get("gp_max_iter", gp_max_iter);
     get("gp_bin_dim", gp_bin_dim);
     get("density_chunks", density_chunks);
+    get("poisson_backend", poisson_backend);
+    if (poisson_backend != "cpu" && poisson_backend != "cuda")
+        throw std::runtime_error("poisson_backend must be \"cpu\" or \"cuda\", got \"" +
+                                 poisson_backend + "\" in " + path);
     get("delta_hpwl_ref", delta_hpwl_ref);
     get("use_bb", use_bb);
     get("gp_backtrack", gp_backtrack);

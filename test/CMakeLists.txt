@@ -12,6 +12,19 @@ if(NOT EXISTS "${SP_TEST_DATA_DIR}/adaptec1/adaptec1.aux")
     endif()
 endif()
 
+# 官方 MMS adaptec1（含可移动宏，52 MB）同理以 mms_adaptec1.tar.xz（3.3 MB）入库，
+# 解压到 test_data/mms_adaptec1/。设计名仍是 adaptec1，与 ISPD 版靠目录区分。
+# 它是黄金测试里唯一走完 mLG / FILLERONLY / cGP 四阶段的设计。
+if(NOT EXISTS "${SP_TEST_DATA_DIR}/mms_adaptec1/adaptec1.aux")
+    if(EXISTS "${SP_TEST_DATA_DIR}/mms_adaptec1.tar.xz")
+        message(STATUS "解压测试数据 test_data/mms_adaptec1.tar.xz")
+        file(ARCHIVE_EXTRACT INPUT "${SP_TEST_DATA_DIR}/mms_adaptec1.tar.xz"
+                             DESTINATION "${SP_TEST_DATA_DIR}")
+    else()
+        message(WARNING "缺少 test_data/mms_adaptec1，golden_mms_adaptec1_* 会失败")
+    endif()
+endif()
+
 function(sp_add_test name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE superplace)
@@ -34,3 +47,30 @@ sp_add_test(test_filler)
 sp_add_test(test_macro_sa)
 sp_add_test(test_eplace)
 sp_add_test(test_viz_writer)
+if(ENABLE_CUDA)
+    sp_add_test(test_poisson_parity)   # CPU 与 CUDA 泊松后端逐点对拍
+endif()
+
+# ----------------------------------------------------------------- 黄金结果测试
+# 设计 × 线程数，全部对同一份黄金值（见 golden/run_golden.cmake）。单独跑：ctest -L golden。
+# RUN_SERIAL：32 线程用例与其他重负载并行跑会让 WSL 满载重启。
+set(SP_GOLDEN_DESIGNS thin1 adaptec1 mms_adaptec1)
+set(SP_GOLDEN_THREADS 1 8 32)
+foreach(design IN LISTS SP_GOLDEN_DESIGNS)
+    file(GLOB aux "${SP_TEST_DATA_DIR}/${design}/*.aux")
+    if(NOT aux)
+        set(aux "${SP_TEST_DATA_DIR}/${design}/${design}.aux")   # 缺数据时由脚本报错
+    endif()
+    foreach(t IN LISTS SP_GOLDEN_THREADS)
+        add_test(NAME golden_${design}_t${t}
+                 COMMAND ${CMAKE_COMMAND}
+                         -DCLI=$<TARGET_FILE:superplace-cli>
+                         -DAUX=${aux}
+                         -DCONFIG=${CMAKE_SOURCE_DIR}/configs/default.json
+                         -DTHREADS=${t}
+                         -DOUT=${CMAKE_BINARY_DIR}/golden/${design}_t${t}
+                         -DEXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/golden/${design}.sha256
+                         -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/run_golden.cmake)
+        set_tests_properties(golden_${design}_t${t} PROPERTIES LABELS golden RUN_SERIAL TRUE)
+    endforeach()
+endforeach()

@@ -89,6 +89,11 @@ struct Config {
     /// 还慢 2.7 倍、内存多吃 4 倍。固定块数同时解决三件事：耗时与内存不再随核数
     /// 膨胀，且结果不再依赖线程数。
     int   density_chunks    = 8;
+    /// 泊松求解后端："cpu"（FFTW）| "cuda"（cuFFT，仅 ENABLE_CUDA 构建）。
+    /// 请求 cuda 而拿不到（非 CUDA 构建、无设备、gp_bin_dim 给了奇数）时回退 cpu 并告警；
+    /// 实际选中的后端写进 summary.json 的 poisson_backend。
+    /// GPU 结果与 CPU 不逐位一致，不参与 CPU 黄金比对（07 §3）。
+    std::string poisson_backend = "cpu";
     /// λ 调度的 ΔHPWL 参考尺度（05 §5.5.9）
     float delta_hpwl_ref    = 3.5e5f;
     /// Nesterov 是否启用 Barzilai-Borwein 步长

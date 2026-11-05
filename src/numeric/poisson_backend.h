@@ -48,12 +48,12 @@ struct BackendConfig {
     int   ny = 0;
     float step_x = 1.f;   // bin 的物理宽度，用于把频域导数换算到物理单位
     float step_y = 1.f;
-    bool  prefer_gpu = false;   // M7 起生效；当前恒走 CPU
+    bool  prefer_gpu = false;   // 仅 ENABLE_CUDA 构建下有效，拿不到 GPU 时回退 CPU
 };
 
-/// 工厂：当前恒返回 CpuPoissonBackend。
-/// ENABLE_CUDA 构建且 cfg.prefer_gpu 为真时，M7 起可返回 CudaPoissonBackend——
-/// 届时调用方无需任何改动。
+/// 工厂（实现在 poisson_factory.cpp）。默认返回 CpuPoissonBackend；
+/// ENABLE_CUDA 构建且 cfg.prefer_gpu 为真时返回 CudaPoissonBackend，
+/// 无可用设备或网格维度为奇数时回退 CPU。调用方用 name() 判断实际选中的后端。
 std::unique_ptr<PoissonBackend> makePoissonBackend(const BackendConfig& cfg);
 
 }  // namespace sp

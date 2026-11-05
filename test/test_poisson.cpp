@@ -4,24 +4,38 @@
 // 一旦把整个布局器串起来跑，这类错误就看不出来了——只会看到单元乱飘，
 // 无法定位是密度、线长、λ 还是步长的问题。
 //
-// 五项测试：
+// 六项测试：
 //   1 高斯峰      场背离峰心 / 边界法向分量≈0（Neumann）/ DC 已消除
 //   2 均匀密度    去 DC 后场处处≈0
 //   3 对称性      ρ 关于中轴对称 => 对应方向的场反对称
 //   4 往返变换    正变换后立即逆变换应还原 ρ（钉死归一化系数）
 //   5 场-势一致性 中心差分验证 ξ = -∇φ（专门捕捉 DST 索引偏移）
+//   6 确定性      同输入两次求解逐位一致
+//
+// 每个可用后端各跑一遍：CPU 总是跑；ENABLE_CUDA 构建且有设备时再跑 CUDA。
+// CPU 与 CUDA 之间的逐点对拍见 test_poisson_parity。
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <numeric>
 #include <vector>
 
 #include "numeric/poisson_backend.h"
 #include "test_util.h"
+#ifdef ENABLE_CUDA
+#include "numeric/cuda/cuda_poisson.h"
+#endif
 
 namespace {
 
 constexpr int   kN    = 64;      // 网格维度，取 2 的幂以贴近真实用法
 constexpr float kStep = 2.5f;    // 非 1 的步长，确保物理单位换算被真正检验
+
+bool g_preferGpu = false;        // 当前这一遍测哪个后端
+
+std::unique_ptr<sp::PoissonBackend> makeBackend() {
+    return sp::makePoissonBackend({kN, kN, kStep, kStep, g_preferGpu});
+}
 
 struct Field {
     int n;
@@ -74,7 +88,7 @@ void testGaussian() {
     const double sum = std::accumulate(f.rho.begin(), f.rho.end(), 0.0);
     CHECK_NEAR(sum / f.rho.size(), 0.0, 1e-6);
 
-    auto be = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be = makeBackend();
     be->solve(f.span(f.rho), f.span(f.phi), f.span(f.ex), f.span(f.ey));
 
     // 判据 b：场处处背离峰心。
@@ -118,7 +132,7 @@ void testUniform() {
     for (float& v : f.rho) v = 3.7f;   // 任意常数
     removeDC(f.rho);                   // 去 DC 后应恒为 0
 
-    auto be = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be = makeBackend();
     be->solve(f.span(f.rho), f.span(f.phi), f.span(f.ex), f.span(f.ey));
 
     CHECK_NEAR(maxAbs(f.ex), 0.0, 1e-4);
@@ -136,7 +150,7 @@ void testSymmetry() {
         }
     removeDC(f.rho);
 
-    auto be = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be = makeBackend();
     be->solve(f.span(f.rho), f.span(f.phi), f.span(f.ex), f.span(f.ey));
 
     const float scale = maxAbs(f.ex);
@@ -169,7 +183,7 @@ void testRoundTrip() {
                 std::cos(static_cast<float>(M_PI) * j0 * (x + 0.5f) / kN) *
                 std::cos(static_cast<float>(M_PI) * k0 * (y + 0.5f) / kN);
 
-    auto be = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be = makeBackend();
     be->solve(f.span(f.rho), f.span(f.phi), f.span(f.ex), f.span(f.ey));
 
     // 单一模式下 φ = ρ/(u²+v²) 应逐点成立
@@ -201,7 +215,7 @@ void testFieldMatchesPotentialGradient() {
                 0.5f * std::cos(static_cast<float>(M_PI) * 1 * (x + 0.5f) / kN);
     removeDC(f.rho);
 
-    auto be = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be = makeBackend();
     be->solve(f.span(f.rho), f.span(f.phi), f.span(f.ex), f.span(f.ey));
 
     const float scaleX = maxAbs(f.ex), scaleY = maxAbs(f.ey);
@@ -229,26 +243,52 @@ void testDeterminism() {
     removeDC(a.rho);
     b.rho = a.rho;
 
-    auto be1 = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be1 = makeBackend();
     be1->solve(a.span(a.rho), a.span(a.phi), a.span(a.ex), a.span(a.ey));
-    auto be2 = sp::makePoissonBackend({kN, kN, kStep, kStep, false});
+    auto be2 = makeBackend();
     be2->solve(b.span(b.rho), b.span(b.phi), b.span(b.ex), b.span(b.ey));
 
     CHECK_TRUE(a.phi == b.phi);
     CHECK_TRUE(a.ex == b.ex);
     CHECK_TRUE(a.ey == b.ey);
+
+    // 同一实例重复求解也必须逐位一致（GPU 上缓冲复用、plan 复用都不得引入差异）
+    Field c(kN);
+    c.rho = a.rho;
+    be1->solve(c.span(c.rho), c.span(c.phi), c.span(c.ex), c.span(c.ey));
+    CHECK_TRUE(c.phi == a.phi);
+    CHECK_TRUE(c.ex == a.ex);
+    CHECK_TRUE(c.ey == a.ey);
 }
 
-}  // namespace
-
-int main() {
-    std::printf("backend: %s\n",
-                sp::makePoissonBackend({kN, kN, kStep, kStep, false})->name());
+void runAll() {
+    std::printf("backend: %s\n", makeBackend()->name());
     testGaussian();
     testUniform();
     testSymmetry();
     testRoundTrip();
     testFieldMatchesPotentialGradient();
     testDeterminism();
+}
+
+}  // namespace
+
+int main() {
+    g_preferGpu = false;
+    CHECK_TRUE(std::strcmp(makeBackend()->name(), "cpu-fftw") == 0);
+    runAll();
+
+#ifdef ENABLE_CUDA
+    if (sp::makeCudaPoissonBackend({kN, kN, kStep, kStep, true})) {
+        g_preferGpu = true;
+        // 设备可用时工厂必须真的给出 CUDA 版，防止静默回退让下面这一遍白测
+        CHECK_TRUE(std::strcmp(makeBackend()->name(), "cuda-cufft") == 0);
+        runAll();
+    } else {
+        std::printf("skip: CUDA 构建但没有可用设备，只测了 CPU 后端\n");
+    }
+#else
+    std::printf("skip: 非 CUDA 构建，只测了 CPU 后端\n");
+#endif
     return sptest::summary("test_poisson");
 }

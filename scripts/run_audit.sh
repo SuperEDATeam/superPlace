@@ -7,6 +7,9 @@ cd "$(dirname "$0")/.."
 
 OUT=${1:-results/audit}
 CFG=${CFG:-configs/default.json}
+# 要审计的二进制。CUDA 版：BIN=./build_cuda/superplace-cli，并用 CFG 指向
+# poisson_backend 为 "cuda" 的配置
+BIN=${BIN:-./build_clean/superplace-cli}
 mkdir -p "$OUT"
 
 # 规模升序：对象数见 work_report/04 §6.3。可用环境变量 DESIGNS 覆盖，
@@ -45,7 +48,7 @@ for p in $DESIGNS; do
     log="$OUT/$d.log"
     t0=$(date +%s.%N)
     rss=$(/usr/bin/time -f "%M" -o "$OUT/$d.rss" \
-          ./build_clean/superplace-cli --aux "$aux" --stage init,gp \
+          "$BIN" --aux "$aux" --stage init,gp \
           --config "$CFG" --no-plot --out "$OUT" > "$log" 2>&1; cat "$OUT/$d.rss" 2>/dev/null)
     rc=$?
     t1=$(date +%s.%N)

@@ -47,6 +47,13 @@ void MetricsSink::endStage(double elapsed_ms) {
     flushStageCsv();
 }
 
+const std::vector<IterMetrics>& MetricsSink::stageMetrics(const std::string& stage) const {
+    static const std::vector<IterMetrics> kEmpty;
+    for (auto it = stages_.rbegin(); it != stages_.rend(); ++it)
+        if (it->first == stage) return it->second;
+    return kEmpty;
+}
+
 void MetricsSink::recordDuration(const std::string& label, double ms) {
     durations_[label] = ms;
 }

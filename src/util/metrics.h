@@ -53,6 +53,10 @@ public:
 
     const std::string& outputDir() const { return out_dir_; }
 
+    /// 某阶段已记录的逐轮指标（测试据此读取 τ、HPWL 曲线）。同名阶段出现多次时
+    /// 取最后一次；没有该阶段返回空表。返回的引用在下次 beginStage / push 前有效。
+    const std::vector<IterMetrics>& stageMetrics(const std::string& stage) const;
+
     /// 录帧钩子。各阶段只负责说"这一刻值得录"，真正去读 PlaceDB、写文件的是
     /// 调用方注入的钩子——util 层因此不必认识 PlaceDB。未设置钩子时 markFrame 是空操作。
     using FrameHook = std::function<void(const FrameMark&)>;

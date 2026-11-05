@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #ifdef _OPENMP
 #endif
@@ -61,7 +62,7 @@ float BinGrid::chargeWeight(const PlaceDB& db, int i, float footprintScale) cons
 }
 
 void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverride,
-                         int chunks) {
+                         int chunks, bool preferGpu) {
     targetDensity_ = targetDensity;
     originX_ = db.coreRegion.lx;
     originY_ = db.coreRegion.ly;
@@ -176,10 +177,14 @@ void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverr
     cfg.ny = dim_;
     cfg.step_x = stepX_;
     cfg.step_y = stepY_;
+    cfg.prefer_gpu = preferGpu;
     backend_ = makePoissonBackend(cfg);
 
     SP_INFO("bin grid: %dx%d  step (%.4f, %.4f)  backend %s", dim_, dim_, stepX_, stepY_,
             backend_->name());
+    if (preferGpu && std::strncmp(backend_->name(), "cuda", 4) != 0)
+        SP_WARN("请求了 CUDA 泊松后端，实际回退到 %s（%s）", backend_->name(),
+                (dim_ % 2) ? "网格维度是奇数，见 gp_bin_dim" : "非 CUDA 构建或没有可用设备");
 }
 
 void BinGrid::accumulate(const PlaceDB& db) {

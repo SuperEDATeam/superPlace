@@ -48,6 +48,10 @@ struct EPlace::Impl {
     std::vector<float> pos;      ///< 2*nOpt：前半 x、后半 y
     std::vector<float> gradWl;   ///< 2*numMovable，由 WaWirelength 填
     std::vector<float> force;    ///< 2*totalNodes，密度力 qξ（**不是**梯度）
+    /// 2*nOpt：最近一次 objAndGrad 的求值点（Nesterov 的前瞻点 u）。tau / hpwl 都是在
+    /// 这个点上测的，凡是要"交付测得该 τ 的那个解"的地方都从这里取，不从 db 读——
+    /// db 只是求值时的工作区，将来 GPU 常驻后它不再保证与求值点同步。
+    std::vector<float> lastEval;
 
     // 调度状态。objAndGrad 只读它们，由主循环每轮更新（05 §5.5.9）
     float  gamma  = 1.f;
@@ -131,6 +135,7 @@ struct EPlace::Impl {
         const int total = db.totalNodes();
 
         scatter(p);
+        std::copy(p, p + 2 * n, lastEval.begin());
 
         // ---- 密度场：先统计电荷，再解泊松
         grid.accumulate(db);
@@ -187,7 +192,9 @@ struct EPlace::Impl {
 
 EPlace::EPlace(PlaceDB& db, const Config& cfg, MetricsSink& sink)
     : impl_(std::make_unique<Impl>(db, cfg, sink)) {
-    impl_->grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks);
+    impl_->grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks,
+                           cfg.poisson_backend == "cuda");
+    sink.setSummary("poisson_backend", impl_->grid.backendName());
     impl_->wl.prepare(db);
     impl_->gradWl.assign(static_cast<size_t>(2 * db.numMovable), 0.f);
     impl_->force.assign(static_cast<size_t>(2 * db.totalNodes()), 0.f);
@@ -211,6 +218,7 @@ GpResult EPlace::run(GpStage stage) {
     }
 
     s.pos.assign(static_cast<size_t>(2 * n), 0.f);
+    s.lastEval.assign(static_cast<size_t>(2 * n), 0.f);
     s.gather(s.pos.data());
     // 必须先夹进 core：落在 core 外的节点与所有 bin 都不相交，密度贡献为 0，
     // 也就感受不到任何密度力，会永远留在外面。QP 之后通常已在 core 内，
@@ -344,16 +352,18 @@ GpResult EPlace::run(GpStage stage) {
                     toString(stage), iter, s.hpwl, s.tau, s.lambda, s.gamma, opt->stepSize());
         }
 
-        // 回调看到的是本轮求值点上的 db，与刚推给 MetricsSink 的那行指标同一位置
+        // 回调看到的是本轮求值点上的 db，与刚推给 MetricsSink 的那行指标同一位置。
+        // 这依赖 objAndGrad 把求值点 scatter 进了 db；将来 GPU 常驻、db 不再每轮回写时，
+        // 这里要先把 lastEval 显式同步到 db 再回调。
         if (s.onIter) s.onIter(stage, iter, db);
 
         result.iterations = iter + 1;
         if (stage != GpStage::kFillerOnly && s.tau < targetTau) {
             result.converged = true;
-            // 达标的是前瞻点 u（db 此刻停在 u），必须交付它而不是 v。u 比 v 多走了一步
+            // 达标的是前瞻点 u（即 lastEval），必须交付它而不是 v。u 比 v 多走了一步
             // 动量，二者的 τ 可以分处阈值两侧：官方 MMS adaptec5 判定达标，交付的 v
             // 实测 τ=0.1005。
-            s.gather(s.pos.data());
+            s.pos = s.lastEval;
             break;
         }
 
@@ -382,8 +392,8 @@ GpResult EPlace::run(GpStage stage) {
                 // 早期写的是 bestPos = s.pos，把 τ(u) 配给了 v 的坐标。收敛平稳时
                 // u≈v 看不出来，但停滞保护恰恰在轨迹震荡时才触发，此时两者相差很远：
                 // 官方 MMS adaptec5 上声称回退到"最优 τ=0.1180"，回退后实测却是 0.2587。
-                // objAndGrad 把 u 写进了 db，step() 返回后不再改 db，所以此刻 db 仍停在 u。
-                s.gather(snap.pos.data());
+                // u 由 objAndGrad 记在 lastEval 里。
+                std::copy(s.lastEval.begin(), s.lastEval.end(), snap.pos.begin());
                 snaps.push_back(std::move(snap));
             }
             if (sinceImprove >= cfg.gp_stagnation_window) {
@@ -406,8 +416,9 @@ GpResult EPlace::run(GpStage stage) {
         }
     }
 
-    // 优化器对外暴露的是"当前解" v，而求值点是前瞻点 u；循环里 db 停在 u 上，
-    // 这里必须把 s.pos 写回去。s.pos 通常是 v；达标与停滞回退时是测得该 τ 的 u。
+    // 优化器对外暴露的是"当前解" v，而求值点是前瞻点 u；db 里留的是最后一次求值的
+    // 工作数据，这里必须把要交付的 s.pos 写回去。s.pos 通常是 v；达标与停滞回退时
+    // 是测得该 τ 的 u（取自 lastEval 或其快照）。
     s.clamp(s.pos.data());
     s.scatter(s.pos.data());
     s.grid.accumulate(db);

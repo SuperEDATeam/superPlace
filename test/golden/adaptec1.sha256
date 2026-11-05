@@ -1,0 +1,4 @@
+# adaptec1：superplace-cli --stage init,gp --config configs/default.json --no-plot，线程数 1 8 32 下逐位一致
+# 由 scripts/update_golden.sh 生成，勿手工编辑
+20c33cbffa4007ab8fe1ac06d20f57aaa08a53d805a33d2325480a6f39825274  adaptec1.init.pl
+a47e01cd524390481c8c4bc86484ab07ea7b0d75fd42bd6b3c7778f600cda9f5  adaptec1.gp.pl

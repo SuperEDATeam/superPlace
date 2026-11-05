@@ -1,0 +1,4 @@
+# mms_adaptec1：superplace-cli --stage init,gp --config configs/default.json --no-plot，线程数 1 8 32 下逐位一致
+# 由 scripts/update_golden.sh 生成，勿手工编辑
+d7dd0d9aec50fe5385daa0dae086e8ccf3954928faa2b3bc7a79185c1e735beb  adaptec1.init.pl
+d49e91dbd30403c157275d36b4c29923ddf7b7cb09425c1fdeee7ea9d75fe063  adaptec1.gp.pl

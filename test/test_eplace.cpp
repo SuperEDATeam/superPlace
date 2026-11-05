@@ -7,8 +7,10 @@
 //
 // 夹具是几千个单元的合成设计，跑完整的 EPlace 循环只需几秒，可以进 ctest；
 // 而 adaptec1 跑一次要 14 秒、还得先跑 14 秒 QP，不适合。
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -321,6 +323,71 @@ void testStagnationGuard() {
 }
 
 // ==========================================================================
+// 4b. 停滞回退点（台账 G3 / G8）
+//
+// G3：τ 与 HPWL 是在 Nesterov 的前瞻点 u 上测的，回退必须交付测得该 τ 的那个点。
+//     早期快照存的是当前解 v，MMS adaptec5 上声称回退到 τ=0.1180，实测却是 0.2587。
+//     交付点经过同样的夹取、散射、累加，τ 与 HPWL 必须与那一轮的记录逐位相同。
+// G8：回退点按"τ 不超过最优值 (1+min_gain) 倍的点里 HPWL 最低"挑，不该为容差内
+//     那点 τ 改善多付线长——它的 HPWL 不得高于 τ 最低的那一轮。
+// ==========================================================================
+void testStagnationRollbackPoint() {
+    Fixture f = makeOverfullFixture();
+    f.cfg.gp_max_iter = 500;
+    f.cfg.gp_stagnation_window = 40;   // 理由同 testStagnationGuard
+    sp::MetricsSink sink;
+    sp::initializeFillers(f.db, f.cfg);
+    sp::EPlace engine(f.db, f.cfg, sink);
+    const sp::GpResult r = engine.run(sp::GpStage::kMGP);
+
+    const std::vector<sp::IterMetrics>& rows = sink.stageMetrics("mGP");
+    CHECK_TRUE(r.stagnated);
+    CHECK_TRUE(!rows.empty());
+    if (!r.stagnated || rows.empty()) return;
+
+    const sp::IterMetrics* rb = nullptr;
+    const sp::IterMetrics* best = &rows.front();
+    for (const sp::IterMetrics& m : rows) {
+        if (m.iter == r.rollbackIter) rb = &m;
+        if (m.overflow < best->overflow) best = &m;
+    }
+    CHECK_TRUE(rb != nullptr);
+    if (!rb) return;
+
+    const float minGain = f.cfg.gp_stagnation_min_gain;
+    const float tol = best->overflow * (1.f + minGain);
+
+    // 仅凭"不高于 τ 最低那轮"拦不住"回退到 τ 最低的快照"这种退化：末段 τ 与 HPWL
+    // 一起单调变化时两者几乎总成立。故按 eplace.cpp 的规则从逐轮记录复算 τ 阶梯快照
+    // （τ 每比上一个快照好 min_gain/2 就记一个，出容差线的丢弃），回退点的 HPWL
+    // 不得高于其中任何一个。
+    std::vector<const sp::IterMetrics*> ladder;
+    float bestSoFar = std::numeric_limits<float>::infinity();
+    for (const sp::IterMetrics& m : rows) {
+        bestSoFar = std::min(bestSoFar, m.overflow);
+        while (!ladder.empty() && ladder.front()->overflow > bestSoFar * (1.f + minGain))
+            ladder.erase(ladder.begin());
+        if (ladder.empty() || m.overflow * (1.f + 0.5f * minGain) <= ladder.back()->overflow)
+            ladder.push_back(&m);
+    }
+    double ladderMin = std::numeric_limits<double>::infinity();
+    for (const sp::IterMetrics* m : ladder) ladderMin = std::min(ladderMin, m->hpwl);
+    std::printf("  [rollback] 回退到第 %d 轮：记录 τ=%.6f HPWL=%.8g，交付 τ=%.6f HPWL=%.8g\n",
+                r.rollbackIter, rb->overflow, rb->hpwl, r.overflow, r.hpwl);
+    std::printf("  [rollback] τ 最低在第 %d 轮：τ=%.6f HPWL=%.8g（容差线 %.6f）\n", best->iter,
+                best->overflow, best->hpwl, tol);
+    std::printf("  [rollback] 容差内阶梯快照 %zu 个，最低 HPWL=%.8g\n", ladder.size(), ladderMin);
+    // G3
+    CHECK_EQ(r.overflow, rb->overflow);
+    CHECK_EQ(r.hpwl, rb->hpwl);
+    // G8
+    CHECK_TRUE(rb->overflow <= tol);
+    CHECK_TRUE(rb->hpwl <= best->hpwl);
+    CHECK_TRUE(ladder.size() >= 2);   // 否则夹具没有可挑的余地，下一条形同虚设
+    CHECK_TRUE(rb->hpwl <= ladderMin);
+}
+
+// ==========================================================================
 // 5. 确定性（铁律 7）：同配置两次运行逐位一致
 // ==========================================================================
 void testDeterminism() {
@@ -427,6 +494,7 @@ int main() {
         {"数值健全", testNoNaNAndInCore},
         {"已达标不动", testAlreadyConvergedDoesNotMove},
         {"停滞保护", testStagnationGuard},
+        {"停滞回退点", testStagnationRollbackPoint},
         {"确定性", testDeterminism},
         {"cGP宏冻结", testMacrosFrozenInCgp},
         {"质量带", testQualityBand},

@@ -259,6 +259,65 @@ void testPushChain() {
     CHECK_TRUE(maxDisp <= 30.0 + 1e-3);
 }
 
+// ----------------------------------------------- 困在阻挡阵列里的宏（台账 L9）
+void testEscapeBlockageArray() {
+    // ISPD bigblue3 的缩微版：504×216 的宏困在固定阻挡阵列里，通道只有 144 宽。
+    // 这里是 200×80 的宏，阻挡 140×140、间距 200（通道 60），10×10 铺满 [530,2470]²。
+    // 宏比通道宽也比通道高，阵列内任何位置都至少压着 140×20；最近的零重叠落点
+    // 在阵列左右边缘外，要平移 1100，网格搜索（步长 50）的窗口到第 6 轮才够得着。
+    // 修复段若"一轮无进展即退出"，第一轮小窗口一无所获就收手，残留 2800。
+    std::vector<NodeSpec> specs;
+    specs.push_back({1500.f, 1500.f, 200.f, 80.f, sp::F_MACRO});
+    for (int i = 0; i < 10; ++i)
+        for (int j = 0; j < 10; ++j)
+            specs.push_back({600.f + 200.f * i, 600.f + 200.f * j, 140.f, 140.f, sp::F_FIXED});
+
+    sp::PlaceDB db = makeDb(3000.f, 10.f, specs, {{0, 1}});
+    sp::MetricsSink sink;
+    sp::Config cfg = makeCfg();
+    cfg.macro_sa_moves = 1;   // 专测修复段
+    const sp::MacroSaResult r = sp::legalizeMacros(db, cfg, sink);
+
+    const double disp = std::hypot(double(db.node_x[0] - specs[0].cx),
+                                   double(db.node_y[0] - specs[0].cy));
+    std::printf("  [array]    含阻挡重叠 %.0f -> %.0f，宏位移 %.1f\n", r.overlapBefore,
+                r.overlapAfter, disp);
+    CHECK_TRUE(r.overlapBefore > 0.0);
+    CHECK_NEAR(r.overlapAfter, 0.0, 1e-6);
+}
+
+// --------------------------------------------- 大宏只需小推移（台账 L10）
+void testLargeMacroSmallShift() {
+    // 官方 MMS newblue7 的缩微版：长边近 7000 的宏只差几十个单位就能解开，却被网格
+    // 搜索（候选步长是宏尺寸的 1/4）一步跳出 20135。这里三个 2000×1000 的宏首尾相接
+    // 顶在 core 上沿，最上面一对叠 30，最底下只空出 30；左下与右侧被固定阻挡填满，
+    // 只在 x ≥ 2500 处有大片空地。整串下推 30 即可合法；先跑网格搜索的话，宏会被
+    // 扔到 2500 开外的空地上。
+    std::vector<NodeSpec> specs;
+    const float ly[3] = {7000.f, 6030.f, 5030.f};
+    for (float y : ly) specs.push_back({1000.f, y + 500.f, 2000.f, 1000.f, sp::F_MACRO});
+    specs.push_back({1000.f, 2500.f, 2000.f, 5000.f, sp::F_FIXED});   // 左下 [0,2000]×[0,5000]
+    specs.push_back({2250.f, 4000.f, 500.f, 8000.f, sp::F_FIXED});    // 右侧 [2000,2500]×[0,8000]
+    constexpr double kDepth = 30.0;
+
+    sp::PlaceDB db = makeDb(8000.f, 10.f, specs, {{0, 1}, {1, 2}});
+    const double before = pairwiseMacroOverlap(db);
+    sp::MetricsSink sink;
+    sp::Config cfg = makeCfg();
+    cfg.macro_sa_moves = 1;
+    const sp::MacroSaResult r = sp::legalizeMacros(db, cfg, sink);
+
+    double maxDisp = 0.0;
+    for (int i = 0; i < 3; ++i)
+        maxDisp = std::max(maxDisp, std::hypot(double(db.node_x[size_t(i)] - specs[size_t(i)].cx),
+                                               double(db.node_y[size_t(i)] - specs[size_t(i)].cy)));
+    std::printf("  [shift]    宏-宏重叠 %.0f，含阻挡 %.0f -> %.0f，最大位移 %.1f（重叠深度 %.0f）\n",
+                before, r.overlapBefore, r.overlapAfter, maxDisp, kDepth);
+    CHECK_TRUE(before > 0.0);
+    CHECK_NEAR(r.overlapAfter, 0.0, 1e-6);
+    CHECK_TRUE(maxDisp <= 2.0 * kDepth);
+}
+
 // --------------------------------------------------------------------- 确定性
 void testDeterminism() {
     auto run = [] {
@@ -294,6 +353,8 @@ int main() {
     testWirelengthControlled();
     testIncrementalMatchesFullHpwl();
     testPushChain();
+    testEscapeBlockageArray();
+    testLargeMacroSmallShift();
     testDeterminism();
     return sptest::summary("test_macro_sa");
 }

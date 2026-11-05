@@ -36,6 +36,16 @@ else()
   message(WARNING "FFTW3 not found; M2'/M3 will need to vendor Ooura fftsg instead")
 endif()
 
+# CUDA 后端（cmake -B build_cuda -DENABLE_CUDA=ON）。架构与标准必须在 enable_language
+# 与建目标之前设好：它们只在目标创建时拷进目标属性。
+if(ENABLE_CUDA)
+  set(CMAKE_CUDA_ARCHITECTURES 89)          # RTX 4060 = Ada, sm_89
+  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+endif()
+
 # ---------------------------------------------------------------- core library
 set(SUPERPLACE_SOURCES
     src/db/place_db.cpp
@@ -44,6 +54,7 @@ set(SUPERPLACE_SOURCES
     src/io/bookshelf_reader.cpp
     src/io/bookshelf_writer.cpp
     src/io/viz_writer.cpp
+    src/numeric/poisson_factory.cpp
     src/numeric/cpu/cpu_poisson.cpp
     src/numeric/cpu/nesterov.cpp
     src/plot/png_writer.cpp
@@ -84,18 +95,19 @@ endif()
 # CImg：仅作图像绘制，不开显示后端（无 X11 依赖）
 target_compile_definitions(superplace PUBLIC cimg_display=0 cimg_use_zlib=0)
 
+# 只作用于 C++：nvcc 不认识这些 gcc 选项
 target_compile_options(superplace PRIVATE
-    -Wall -Wextra -Wno-unused-parameter
-    $<$<CONFIG:Release>:-O3 -funroll-loops>
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter>
+    $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CONFIG:Release>>:-O3 -funroll-loops>
 )
 if(ENABLE_NATIVE)
-  target_compile_options(superplace PRIVATE -march=native)
+  target_compile_options(superplace PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
 endif()
 
 if(ENABLE_CUDA)
-  enable_language(CUDA)
-  set(CMAKE_CUDA_ARCHITECTURES 89)          # RTX 4060 = Ada, sm_89
+  target_sources(superplace PRIVATE src/numeric/cuda/cuda_poisson.cu)
   target_compile_definitions(superplace PUBLIC ENABLE_CUDA)
+  target_link_libraries(superplace PUBLIC CUDA::cufft CUDA::cudart)
 endif()
 
 # ------------------------------------------------------------------ executables

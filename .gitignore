@@ -13,10 +13,12 @@ benchmarks/*
 
 # 测试数据：只入库单元测试必需的部分。thin1（208 KB）原样入库；adaptec1（40 MB）以
 # adaptec1.tar.xz（2.9 MB）入库，由 test/CMakeLists.txt 在配置时解压到 test_data/adaptec1/。
+# 官方 MMS adaptec1（52 MB）以 mms_adaptec1.tar.xz（3.3 MB）入库，解压到 test_data/mms_adaptec1/。
 # adaptec4 没有测试用到，不入库。写成 test_data/* 的理由同上。
 test_data/*
 !test_data/thin1/
 !test_data/adaptec1.tar.xz
+!test_data/mms_adaptec1.tar.xz
 
 # 构建与运行产物。build_*/ 覆盖 build_clean 之类的额外构建目录——
 # 它曾被误提交过 280 个文件（含 .a 与可执行文件）。

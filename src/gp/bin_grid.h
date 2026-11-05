@@ -18,8 +18,9 @@ class BinGrid {
 public:
     /// 初始化网格并预计算静态密度项。binDimOverride > 0 时跳过自动推算。
     /// chunks 为密度累加的局部网格块数（见 Config::density_chunks），<=0 取默认 8。
+    /// preferGpu 请求 CUDA 泊松后端（见 Config::poisson_backend），拿不到时回退 CPU 并告警。
     void initialize(const PlaceDB& db, float targetDensity, int binDimOverride = 0,
-                    int chunks = 0);
+                    int chunks = 0, bool preferGpu = false);
 
     /// 统计可移动节点与 filler 的密度贡献（每轮调用）。
     void accumulate(const PlaceDB& db);
@@ -41,6 +42,8 @@ public:
     float stepX() const { return stepX_; }
     float stepY() const { return stepY_; }
     float binArea() const { return stepX_ * stepY_; }
+    /// 实际选中的泊松后端名（如 "cpu-fftw" / "cuda-cufft"）
+    const char* backendName() const { return backend_ ? backend_->name() : "none"; }
 
     /// 全部参与密度的节点的电荷之和。
     /// 不变量：它必须等于 Σ(nodeDensity + fillerDensity)——

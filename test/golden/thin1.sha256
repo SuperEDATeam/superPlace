@@ -1,0 +1,4 @@
+# thin1：superplace-cli --stage init,gp --config configs/default.json --no-plot，线程数 1 8 32 下逐位一致
+# 由 scripts/update_golden.sh 生成，勿手工编辑
+bb203a1d5431ec6b0b351d053886ece0297f75f43e458ef9f5212288b9fd061a  thin1.init.pl
+4151fcab929bebd3cf42ac1f697f56e559c571791785e2a12c3bfb3ed2fd6f61  thin1.gp.pl

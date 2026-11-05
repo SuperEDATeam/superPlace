@@ -201,10 +201,4 @@ std::unique_ptr<PoissonBackend> makeCpuPoissonBackend(const BackendConfig& cfg) 
     return std::make_unique<CpuPoissonBackend>(cfg);
 }
 
-// 工厂：当前恒走 CPU。M7 加入 CUDA 后端后，此处按 cfg.prefer_gpu 分派即可，
-// 调用方无需任何改动（决策 7）。
-std::unique_ptr<PoissonBackend> makePoissonBackend(const BackendConfig& cfg) {
-    return makeCpuPoissonBackend(cfg);
-}
-
 }  // namespace sp

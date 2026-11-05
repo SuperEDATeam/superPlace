@@ -1201,6 +1201,7 @@ void App::drawCanvasPanel(unsigned dockId) {
 
 // T22：可收起栏目（自绘 -/+ 小按钮，状态存 StateStorage 随 ini 记住）。
 static bool sectionHeader(const char* name) {
+    ImGui::PushID(name);
     // T22：栏目收起状态写入独立 ini（跨进程持久），运行态用静态 map 同步。
     static std::map<std::string, bool> s_open;
     static bool s_loaded = false;
@@ -1229,6 +1230,7 @@ static bool sectionHeader(const char* name) {
     }
     ImGui::SameLine();
     ImGui::SeparatorText(name);
+    ImGui::PopID();
     return open;
 }
 

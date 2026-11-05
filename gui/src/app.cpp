@@ -467,17 +467,22 @@ void App::updateContinuousValues() {
     if (compareOn_) {
         // T21：位移按参考三选（纯逻辑见 viz/displacement.h）。
         const PlaybackController::DisplayState ds = playback_.state();
+        // 区间选择：hi>lo 用 lo/hi；否则停在 breakBefore 关键帧，用 prev/current（lo-1,lo）
+        int loIdx = std::max(0, ds.lo), hiIdx = ds.hi;
+        float useAlpha = ds.hi > ds.lo ? ds.alpha : 1.f;
+        if (ds.hi == ds.lo && ds.lo > 0) {
+            loIdx = ds.lo - 1; hiIdx = ds.lo;  // prev→current 硬跳变
+        }
         FrameView flo, fhi;
-        src_->frame(std::max(0, ds.lo), flo);
-        if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
+        src_->frame(loIdx, flo);
+        if (hiIdx > loIdx) src_->frame(hiIdx, fhi);
         // 参考帧
         int refFrame = 0;
         if (dispRefMode_ == 1) {
-            // 相对 init 结束：最后一个 stage=="init" 的帧（fallback 0）
             for (int i = (int)metas_.size() - 1; i >= 0; --i)
                 if (metas_[i].stage == "init") { refFrame = i; break; }
         } else if (dispRefMode_ == 2) {
-            refFrame = 0;  // 相对输入：第 0 帧
+            refFrame = 0;
         }
         FrameView fref;
         bool haveRef = dispRefMode_ != 0 && src_->frame(refFrame, fref) && fref.valid();
@@ -488,8 +493,7 @@ void App::updateContinuousValues() {
                                  fhi.valid() ? fhi.y : nullptr};
             viz::FrameViewLite R{haveRef ? fref.x : nullptr,
                                  haveRef ? fref.y : nullptr};
-            viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R,
-                                ds.hi > ds.lo ? ds.alpha : 0.f, n, dispValues_);
+            viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R, useAlpha, n, dispValues_);
             // 固定色表范围：末帧(frameCount-1)相对参考帧 p99，一次回放内不变。
             if (dispRangeDirty_ || dispRange_ <= 0.f) {
                 FrameView flast, flref;
@@ -1139,17 +1143,20 @@ void App::drawCanvasPanel(unsigned dockId) {
     // ---- T21：位移向量场（参考位置→当前插值位置，末端落当前矩形，stride≤4000）
     if (compareOn_ && showVectors_ && src_ && geomUploaded_) {
         const PlaybackController::DisplayState ds = playback_.state();
+        int loIdx = std::max(0, ds.lo), hiIdx = ds.hi;
+        float useAlpha = ds.hi > ds.lo ? ds.alpha : 1.f;
+        if (ds.hi == ds.lo && ds.lo > 0) { loIdx = ds.lo - 1; hiIdx = ds.lo; }
         FrameView flo, fhi;
-        src_->frame(std::max(0, ds.lo), flo);
-        if (ds.hi > ds.lo) src_->frame(ds.hi, fhi);
+        src_->frame(loIdx, flo);
+        if (hiIdx > loIdx) src_->frame(hiIdx, fhi);
         int refFrame = 0;
         if (dispRefMode_ == 1) {
             for (int i = (int)metas_.size() - 1; i >= 0; --i)
                 if (metas_[i].stage == "init") { refFrame = i; break; }
         } else if (dispRefMode_ == 0) {
-            refFrame = std::max(0, ds.lo);  // 瞬时：箭头 lo→当前
+            refFrame = loIdx;
         } else {
-            refFrame = 0;  // 相对输入：第0帧
+            refFrame = 0;
         }
         FrameView fref; bool haveRef = src_->frame(refFrame, fref) && fref.valid();
         if (flo.valid()) {
@@ -1157,9 +1164,9 @@ void App::drawCanvasPanel(unsigned dockId) {
             const int stride = std::max(1, (n + 3999) / 4000);
             for (int i = 0; i < n; i += stride) {
                 float cx = flo.x[i], cy = flo.y[i];
-                if (fhi.valid() && ds.hi > ds.lo) {
-                    cx += ds.alpha * (fhi.x[i] - cx);
-                    cy += ds.alpha * (fhi.y[i] - cy);
+                if (fhi.valid()) {
+                    cx += useAlpha * (fhi.x[i] - cx);
+                    cy += useAlpha * (fhi.y[i] - cy);
                 }
                 float rx = cx, ry = cy;
                 if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
@@ -1215,6 +1222,8 @@ static bool sectionHeader(const char* name) {
 
 void App::drawSidebar() {
     ImGui::Begin("控制");
+    // 每帧一次取 nets 指针（懒加载），后续面板分支复用，不重复触发。
+    const bool hasNets = src_ && src_->nets() != nullptr;
 
     ImGui::SeparatorText("数据源");
     ImGui::SetNextItemWidth(-1);
@@ -1377,12 +1386,11 @@ if (sectionHeader("时间轴 / 回放")) {
                 item(ColorMode::Kind, "按类别", true);
                 item(ColorMode::Density, "按局部密度（面积重叠）", true);
                 item(ColorMode::Displacement, "按帧间位移量", true);
-                const bool hasNets = src_->nets() != nullptr;
-                item(ColorMode::Kind, hasNets ? "按 net 数" : "按 net 数（无网表）", hasNets);
+                item(ColorMode::NetCount, hasNets ? "按 net 数" : "按 net 数（无网表）", hasNets);
                 if (!hasNets) ImGui::TextDisabled("bundle 不含 nets/：网表功能禁用");
                 ImGui::EndCombo();
             }
-            if (src_->nets())
+            if (hasNets)
                 ImGui::SliderInt("net 高亮度数阈值", &netDegThreshold_, 10, 10000);
             if (compareOn_) {
                 const char* refs[] = {"瞬时运动 |pos(hi)-pos(lo)|", "相对 init 结束", "相对输入（第0帧）"};
@@ -1398,9 +1406,20 @@ if (sectionHeader("时间轴 / 回放")) {
             ImGui::Text("范围 %.3g ~ %.3g", lastValMin_, lastValMax_);
             ImVec2 p = ImGui::GetCursorScreenPos();
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            dl->AddRectFilledMultiColor(p, {p.x + 160, p.y + 12},
-                                        IM_COL32(40, 70, 220, 255), IM_COL32(50, 200, 100, 255),
-                                        IM_COL32(50, 200, 100, 255), IM_COL32(235, 60, 50, 255));
+            // 与 canvas shader 同一组 viridis 停点
+            const float stops[5][3] = {{0.267f,0.005f,0.329f},{0.229f,0.322f,0.545f},
+                                       {0.127f,0.566f,0.550f},{0.369f,0.789f,0.383f},
+                                       {0.992f,0.906f,0.144f}};
+            for (int i = 0; i < 24; ++i) {
+                float t = i / 23.f;
+                int s = std::min(4, (int)(t * 4.f)); float lt = t * 4.f - s;
+                if (s >= 4) { s = 3; lt = 1.f; }
+                float r = stops[s][0]+lt*(stops[s+1][0]-stops[s][0]);
+                float g = stops[s][1]+lt*(stops[s+1][1]-stops[s][1]);
+                float b = stops[s][2]+lt*(stops[s+1][2]-stops[s][2]);
+                ImU32 col = IM_COL32((int)(r*255),(int)(g*255),(int)(b*255),255);
+                dl->AddRectFilled({p.x + 160*t, p.y}, {p.x + 160*(i+1)/23.f, p.y+12}, col);
+            }
             ImGui::Dummy({160, 12});
         } else if (compareOn_) {
             ImGui::Text("位移范围 %.3g ~ %.3g", lastValMin_, lastValMax_);
@@ -1413,9 +1432,9 @@ if (sectionHeader("时间轴 / 回放")) {
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("全图视角下单元不足 1 像素，按此尺寸放大显示，避免碎成噪点");
 
-                }  // 渲染/着色
+        }  // 渲染/着色
 
-ImGui::SeparatorText("统计");
+        if (sectionHeader("统计")) {
         ImGui::Text("设计        %s", sc.benchmark.c_str());
         ImGui::Text("节点        %s", human(sc.nodeCount).c_str());
         ImGui::Text("core        %.0f x %.0f", sc.core.width(), sc.core.height());
@@ -1425,6 +1444,7 @@ ImGui::SeparatorText("统计");
         ImGui::Text("位置上传    %.2f ms", canvas_.lastUploadMs());
         ImGui::Text("UI          %.1f fps", ImGui::GetIO().Framerate);
         if (lodActive_) ImGui::TextUnformatted("LOD 热力图模式（放大后恢复矩形）");
+        }
     }
 
     ImGui::Separator();

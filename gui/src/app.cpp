@@ -903,9 +903,11 @@ void App::drawCanvasPanel(unsigned dockId) {
     const ImVec2 lo(canvasX_, canvasY_);
     const ImVec2 hi(canvasX_ + canvasW_, canvasY_ + canvasH_);
     // T18：clip=false 不受隐形 Debug##Default 窗口裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
+    // T18：clip=false 不受裁剪框截断；PassthruCentralNode 中央无真实面板窗口，
+    // 不另用 IsWindowHovered(AnyWindow)——那会把宿主 dockspace 背景窗当成遮挡而拦住画布。
+    // 真实浮窗/弹出菜单由 ImGui 自身 WantCaptureMouse 机制在面板内处理。
     const bool mouseInCanvas = ImGui::IsMouseHoveringRect(lo, hi, /*clip=*/false);
-    const bool overCanvas = mouseInCanvas &&
-        !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow);
+    const bool overCanvas = mouseInCanvas;
     // 拖拽平移：只有「按下时就在画布上」才允许，避免从面板拖入误平移。
     static bool panning = false;
     if (overCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {

@@ -206,7 +206,7 @@ HPWL/overflow 并双向联动游标；位移着色为「按帧间位移」模式
 - **T19**：底部收敛曲线停靠进 dock，画布=中央节点矩形，坐标轴画背景层贴边，「重置布局」按钮。
 - **T20**：默认画真实矩形；热力图改图层开关（默认关、可调透明度）；>100 万且行高<1px 自动降级并提示；viridis 色条图例。
 - **T21**：删独立帧对比窗口与 `--compare`；位移着色参考三选（瞬时/相对 init 结束/相对输入），色表固定 p99，位移箭头图层。
-- **T22**：栏目 -/+ 收起（StateStorage 随 ini），顺序 数据源→总览→时间轴→图层→渲染→统计，总览关键指标 + 全部字段子栏。
+- **T22**：栏目 -/+ 收起（状态写入 sidecar 文件 `superplace-gui-sections.ini`，跨进程持久），顺序 数据源→总览→时间轴→图层→渲染→统计，总览关键指标 + 全部字段子栏。
 - **T23**：窗口标题英文 superPlace Viewer，跳转按钮 ASCII。
 
 ## 边界
@@ -231,3 +231,13 @@ bundle 格式契约）；`frameInfo()` 只读元数据不触发位置 IO；无 n
 - 真实鼠标点击/拖拽交互未在无头环境实测（仅 CLI 截图与无头 probe）；dockspace 三尺寸布局为代码审查结论。
 - T23 收敛曲线横轴当前为 metrics 行号，未改全局迭代轮数（可选项）。
 - 证据路径：results/gui-final-review/（非 /tmp）。
+
+## 2026-11-05 冻结候选修复记录（待独立测试填最终数字）
+
+- T21 位移参考纯逻辑抽出 `viz/displacement.h`：瞬时 = |hi−lo|（与 alpha 无关）；停在 breakBefore 关键帧时取 prev→current 硬跳变；p99 取末帧相对参考帧一次固定，切参考/切 bundle 失效。
+- T20 shader 与面板/画布色条统一为同一组 viridis 5 停点。
+- T10 网表：`hasNetsAvailable()` 只读探测 nets/ 不触发加载；NetCount 真算每节点不同 net 个数；star 高亮遍历选中 net 全部引脚、bbox 中心连线、其他 pin 描边、net Selectable filter；偏移缓存只读引用不每帧拷贝。
+- T24 点击时用当前插值坐标重建 pick 索引（非 statsSource 关键帧）。
+- T22 sidecar ini 跨进程持久。
+- CLI 未知 `--flag` 报错退出 2；`--compare` 已移除。
+- 无头单测数字待独立 clean 测试回报后填入，本处不预测。

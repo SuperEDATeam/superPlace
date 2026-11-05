@@ -1222,8 +1222,8 @@ static bool sectionHeader(const char* name) {
 
 void App::drawSidebar() {
     ImGui::Begin("控制");
-    // 每帧一次取 nets 指针（懒加载），后续面板分支复用，不重复触发。
-    const bool hasNets = src_ && src_->nets() != nullptr;
+    // 每帧一次探测 nets/ 目录存在性（不触发 nets() 懒加载）。
+    const bool hasNets = src_ && src_->hasNetsAvailable();
 
     ImGui::SeparatorText("数据源");
     ImGui::SetNextItemWidth(-1);
@@ -1368,6 +1368,7 @@ if (sectionHeader("时间轴 / 回放")) {
         {
             const char* cur = colorMode_ == ColorMode::Density ? "按局部密度"
                             : colorMode_ == ColorMode::Displacement ? "按帧间位移"
+                            : colorMode_ == ColorMode::NetCount ? "按 net 数"
                             : "按类别";
             if (ImGui::BeginCombo("着色", cur)) {
                 auto item = [&](ColorMode m, const char* name, bool enabled) {

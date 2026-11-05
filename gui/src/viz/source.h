@@ -57,6 +57,8 @@ public:
 
     /// T10：网表（§3.9）。无 nets/ 或校验失败返回 nullptr。首次调用才加载。
     virtual const NetList* nets() const { return nullptr; }
+    /// 仅探测 bundle 是否含 nets/（不触发加载），用于菜单可选。
+    virtual bool hasNetsAvailable() const { return false; }
 
 protected:
     IPlacementSource() = default;

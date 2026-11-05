@@ -103,6 +103,11 @@ public:
         if (!netsTried_) loadNets();
         return netList_ ? netList_.get() : nullptr;
     }
+    bool hasNetsAvailable() const override {
+        // 仅探测 nets/ 目录存在，不加载数据。
+        std::error_code ec;
+        return std::filesystem::is_directory(dir_ / "nets", ec);
+    }
 
     void prefetch(int center, int direction) override {
         if (frames_.empty()) return;

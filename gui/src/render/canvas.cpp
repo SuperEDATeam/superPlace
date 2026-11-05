@@ -16,14 +16,19 @@ const float kColors[4][4] = {
     {0.96f, 0.59f, 0.16f, 0.90f},   // 宏 橙
 };
 
-// 连续色表（T7 局部密度 / T8 位移量共用）：蓝 -> 绿 -> 红。
+// 连续色表：viridis 5 控制点（shader 与 CPU legend 共用，见 app.cpp 色条）。
 const char* kCmapGLSL = R"(
 vec3 cmap(float t) {
     t = clamp(t, 0.0, 1.0);
-    vec3 lo = vec3(0.15, 0.25, 0.85);
-    vec3 mid = vec3(0.20, 0.80, 0.40);
-    vec3 hi = vec3(0.92, 0.25, 0.20);
-    return t < 0.5 ? mix(lo, mid, t * 2.0) : mix(mid, hi, t * 2.0 - 1.0);
+    vec3 c0 = vec3(0.267, 0.005, 0.329);
+    vec3 c1 = vec3(0.229, 0.322, 0.545);
+    vec3 c2 = vec3(0.127, 0.566, 0.550);
+    vec3 c3 = vec3(0.369, 0.789, 0.383);
+    vec3 c4 = vec3(0.992, 0.906, 0.144);
+    if (t < 0.25) return mix(c0, c1, t * 4.0);
+    if (t < 0.5)  return mix(c1, c2, (t - 0.25) * 4.0);
+    if (t < 0.75) return mix(c2, c3, (t - 0.5) * 4.0);
+    return mix(c3, c4, (t - 0.75) * 4.0);
 }
 )";
 

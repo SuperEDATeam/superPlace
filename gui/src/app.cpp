@@ -19,6 +19,7 @@
 #include "render/scale_tick.h"
 #include "viz/summary.h"
 #include "viz/nets.h"
+#include "viz/displacement.h"
 
 namespace viz {
 namespace {
@@ -440,7 +441,7 @@ void App::updateContinuousValues() {
     const int n = src_->scene().nodeCount;
 
     if (compareOn_) {
-        // T21：位移按参考三选计算。当前显示插值位置 = lerp(lo,hi,alpha)。
+        // T21：位移按参考三选（纯逻辑见 viz/displacement.h）。
         const PlaybackController::DisplayState ds = playback_.state();
         FrameView flo, fhi;
         src_->frame(std::max(0, ds.lo), flo);
@@ -448,39 +449,34 @@ void App::updateContinuousValues() {
         // 参考帧
         int refFrame = 0;
         if (dispRefMode_ == 1) {
-            // 相对 init 结束：第一个非 init 阶段帧（mLG 起点）
-            refFrame = 0;
-            for (size_t i = 0; i < metas_.size(); ++i)
-                if (metas_[i].stage != "init") { refFrame = (int)i; break; }
-        } else if (dispRefMode_ == 0) {
-            refFrame = std::max(0, ds.lo);  // 瞬时：参考 lo
+            // 相对 init 结束：最后一个 stage=="init" 的帧（fallback 0）
+            for (int i = (int)metas_.size() - 1; i >= 0; --i)
+                if (metas_[i].stage == "init") { refFrame = i; break; }
+        } else if (dispRefMode_ == 2) {
+            refFrame = 0;  // 相对输入：第 0 帧
         }
         FrameView fref;
         bool haveRef = dispRefMode_ != 0 && src_->frame(refFrame, fref) && fref.valid();
         if (flo.valid()) {
-            dispValues_.assign(static_cast<size_t>(n), 0.f);
-            std::vector<float> mags; mags.reserve(n);
-            for (int i = 0; i < n; ++i) {
-                float cx = flo.x[i], cy = flo.y[i];
-                if (fhi.valid() && ds.hi > ds.lo) {
-                    cx += ds.alpha * (fhi.x[i] - cx);
-                    cy += ds.alpha * (fhi.y[i] - cy);
-                }
-                float rx = 0, ry = 0;
-                if (dispRefMode_ == 0) { rx = fhi.valid() ? fhi.x[i] : cx; ry = fhi.valid() ? fhi.y[i] : cy; }
-                else if (haveRef) { rx = fref.x[i]; ry = fref.y[i]; }
-                const float d = std::hypot(cx - rx, cy - ry);
-                dispValues_[i] = d;
-                mags.push_back(d);
+            dispValues_.assign((size_t)n, 0.f);
+            viz::FrameViewLite L{flo.x, flo.y};
+            viz::FrameViewLite H{fhi.valid() ? fhi.x : nullptr,
+                                 fhi.valid() ? fhi.y : nullptr};
+            viz::FrameViewLite R{haveRef ? fref.x : nullptr,
+                                 haveRef ? fref.y : nullptr};
+            viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R,
+                                ds.hi > ds.lo ? ds.alpha : 0.f, n, dispValues_);
+            // 固定色表范围：参考切换时算一次末帧 p99（缓存），不每帧 sort。
+            if (dispRangeDirty_ || dispRange_ <= 0.f) {
+                std::vector<float> mags;
+                viz::dispMagnitudes((viz::DispRef)dispRefMode_, L, H, R, 1.f, n, mags);
+                dispRange_ = std::max(1e-6f, viz::percentile(mags, 0.99));
+                dispRangeDirty_ = false;
             }
-            // 固定色表范围：第 99 百分位
-            std::sort(mags.begin(), mags.end());
-            float p99 = mags.empty() ? 1.f : mags[(size_t)(mags.size() * 0.99)];
-            if (p99 <= 0.f) p99 = 1.f;
             canvas_.setColorMode(ColorMode::Displacement);
             canvas_.setContinuousValues(dispValues_.data(), n);
-            canvas_.setValueRange(0.f, p99);
-            lastValMin_ = 0.f; lastValMax_ = p99;
+            canvas_.setValueRange(0.f, dispRange_);
+            lastValMin_ = 0.f; lastValMax_ = dispRange_;
             return;
         }
     }
@@ -908,13 +904,26 @@ void App::drawCanvasPanel(unsigned dockId) {
             fg->AddText(ImVec2(canvasX_ + 10, canvasY_ + 30),
                         IM_COL32(255, 160, 0, 255),
                         "热力图模式：图层 / 着色在此模式下不生效，放大后恢复");
-        // T20：连续色表色条（viridis 近似，右下角）
+        // T20：连续色表色条（与 canvas.cpp shader cmap 同一组 viridis 停点）。
         if (colorMode_ != ColorMode::Kind || compareOn_) {
             const float cw = 180.f, ch = 8.f;
             const float cx0 = canvasX_ + canvasW_ - cw - 14, cy0 = canvasY_ + canvasH_ - 14;
+            const float stops[5][3] = {{0.267f,0.005f,0.329f},{0.229f,0.322f,0.545f},
+                                       {0.127f,0.566f,0.550f},{0.369f,0.789f,0.383f},
+                                       {0.992f,0.906f,0.144f}};
+            auto vmap = [&](float t) {
+                t = std::clamp(t, 0.f, 1.f);
+                int s = std::min(4, (int)(t * 4.f));
+                float lt = t * 4.f - s;
+                if (s >= 4) { s = 3; lt = 1.f; }
+                float r = stops[s][0] + lt * (stops[s+1][0] - stops[s][0]);
+                float g = stops[s][1] + lt * (stops[s+1][1] - stops[s][1]);
+                float b = stops[s][2] + lt * (stops[s+1][2] - stops[s][2]);
+                return IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 255);
+            };
             for (int i = 0; i < 24; ++i) {
                 float t = i / 23.f;
-                ImU32 col = IM_COL32((int)(40 + t * 200), (int)(10 + t * 180), (int)(140 - t * 100), 255);
+                ImU32 col = vmap(t);
                 fg->AddRectFilled({cx0 + cw * t, cy0}, {cx0 + cw * (i + 1) / 23.f, cy0 + ch}, col);
             }
             char cb[48];
@@ -1271,7 +1280,9 @@ if (sectionHeader("时间轴 / 回放")) {
                 ImGui::SliderInt("net 高亮度数阈值", &netDegThreshold_, 10, 10000);
             if (compareOn_) {
                 const char* refs[] = {"瞬时运动 |pos(hi)-pos(lo)|", "相对 init 结束", "相对输入（第0帧）"};
+                int prevRef = dispRefMode_;
                 ImGui::Combo("参考", &dispRefMode_, refs, IM_ARRAYSIZE(refs));
+                if (prevRef != dispRefMode_) dispRangeDirty_ = true;
                 ImGui::Checkbox("位移箭头", &showVectors_);
                 ImGui::TextDisabled("色表单位：设计坐标单位（一次回放固定）");
             }

@@ -1393,7 +1393,7 @@ if (sectionHeader("时间轴 / 回放")) {
                 item(ColorMode::NetCount, hasNets ? "按 net 数" : "按 net 数（无网表）", hasNets);
                 if (!hasNets) {
                     const std::string& e = src_->netsError();
-                    ImGui::TextDisabled(e.empty() ? "bundle 未声明 nets：网表功能禁用" : e.c_str());
+                    ImGui::TextDisabled("%s", e.empty() ? "bundle 未声明 nets：网表功能禁用" : e.c_str());
                 }
                 ImGui::EndCombo();
             }
@@ -1638,7 +1638,7 @@ void App::drawInspectPanel() {
         }
     } else {
         const std::string& e = src_->netsError();
-        ImGui::TextDisabled(e.empty() ? "无网表（bundle 未声明 nets）" : e.c_str());
+        ImGui::TextDisabled("%s", e.empty() ? "无网表（bundle 未声明 nets）" : e.c_str());
     }
     ImGui::End();
 }

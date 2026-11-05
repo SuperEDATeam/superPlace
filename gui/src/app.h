@@ -125,6 +125,7 @@ private:
     double drawMs_ = 0.0;
     std::vector<float> xs_;      ///< 曲线横轴（全局行序号），按需重建
     bool   layoutBuilt_ = false;
+    unsigned int dockId_ = 0;   ///< 宿主 dockspace id（T18 放行判定）
 
     // ---- T2：resize 保持视野（记住上一帧画布尺寸）
     float prevCanvasW_ = -1.f, prevCanvasH_ = -1.f;

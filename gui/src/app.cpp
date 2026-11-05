@@ -829,6 +829,7 @@ void App::drawUi() {
     // 新版 ImGui 的签名是 (dockspace_id, viewport, flags)，旧版是 (viewport, flags)
     const ImGuiID dockId = ImGui::DockSpaceOverViewport(
         0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+    dockId_ = (unsigned int)dockId;
 
     // 首次运行搭一套默认布局。不这么做的话三个面板会各自浮着，而且"布局画布"
     // 会塌缩——它的尺寸取自窗口可用区，内容又按该尺寸建 InvisibleButton，
@@ -903,11 +904,20 @@ void App::drawCanvasPanel(unsigned dockId) {
     const ImVec2 lo(canvasX_, canvasY_);
     const ImVec2 hi(canvasX_ + canvasW_, canvasY_ + canvasH_);
     // T18：clip=false 不受隐形 Debug##Default 窗口裁剪框截断；鼠标下无任何 ImGui 窗口才算画布。
-    // T18：clip=false 不受裁剪框截断；PassthruCentralNode 中央无真实面板窗口，
-    // 不另用 IsWindowHovered(AnyWindow)——那会把宿主 dockspace 背景窗当成遮挡而拦住画布。
-    // 真实浮窗/弹出菜单由 ImGui 自身 WantCaptureMouse 机制在面板内处理。
+    // T18：clip=false 不受裁剪框截断。中央透明区的宿主 dockspace 背景窗放行，
+    // 任何真实面板/浮窗/弹窗/modal 悬停都拦截。
     const bool mouseInCanvas = ImGui::IsMouseHoveringRect(lo, hi, /*clip=*/false);
-    const bool overCanvas = mouseInCanvas;
+    bool overCanvas = mouseInCanvas;
+    if (mouseInCanvas && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
+        ImGuiContext& g = *ImGui::GetCurrentContext();
+        ImGuiWindow* h = g.HoveredWindow;
+        // 宿主 dockspace 窗（DockSpaceOverViewport 创建）id 等于 dockId 或名字含 DockSpace；
+        // 它不是真实交互面板，放行。其余 hovered 窗（面板/浮窗/弹窗）一律拦。
+        bool isHost = h && (h->ID == (ImGuiID)dockId_ ||
+                            strstr(h->Name, "DockSpace") != nullptr ||
+                            strstr(h->Name, "DockNode") != nullptr);
+        overCanvas = isHost;
+    }
     // 拖拽平移：只有「按下时就在画布上」才允许，避免从面板拖入误平移。
     static bool panning = false;
     if (overCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {

@@ -1207,8 +1207,17 @@ static bool sectionHeader(const char* name) {
     if (!s_loaded) {
         s_loaded = true;
         std::ifstream in("superplace-gui-sections.ini");
-        std::string k; int v;
-        while (in >> k >> v) s_open[k] = (v != 0);
+        std::string line;
+        while (std::getline(in, line)) {
+            // 行格式："栏目名" 0/1（名字带空格用双引号）
+            if (line.empty() || line[0] != '"') continue;
+            size_t q = line.find('"', 1);
+            if (q == std::string::npos) continue;
+            std::string k = line.substr(1, q - 1);
+            int v = 0;
+            try { v = std::stoi(line.substr(q + 1)); } catch (...) { continue; }
+            s_open[k] = (v != 0);
+        }
     }
     auto it = s_open.find(name);
     bool open = it == s_open.end() ? true : it->second;
@@ -1216,7 +1225,7 @@ static bool sectionHeader(const char* name) {
     if (ImGui::SmallButton(btn)) {
         open = !open; s_open[name] = open;
         std::ofstream out("superplace-gui-sections.ini", std::ios::trunc);
-        for (auto& [kk, vv] : s_open) out << kk << " " << (vv ? 1 : 0) << "\n";
+        for (auto& [kk, vv] : s_open) out << '"' << kk << "\" " << (vv ? 1 : 0) << "\n";
     }
     ImGui::SameLine();
     ImGui::SeparatorText(name);

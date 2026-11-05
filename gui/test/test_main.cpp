@@ -5,6 +5,7 @@ void testCamera();
 void testKind();
 void testBundle();
 void testNets();
+void testDisplacement();
 void testSpatial();
 void testDensity();
 void testFrameMap();
@@ -37,6 +38,7 @@ int main() {
     testKind();
     testBundle();
     testNets();
+    testDisplacement();
     testSpatial();
     testDensity();
     testFrameMap();

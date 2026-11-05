@@ -109,12 +109,17 @@ void testNets() {
         out.write(reinterpret_cast<char*>(&dx),4);
         out.write(reinterpret_cast<char*>(&dy),4);
         out.close();
-        std::vector<float> off;
+        const std::vector<float>* off;
         // frame 3 < 5：无更新
-        CHECK_TRUE(nl.pinOffsetForFrame(3, off, dir.string()));
-        CHECK_TRUE(off[0]==1.f && off[1]==2.f && off[2]==10.f && off[3]==20.f);
-        // frame 5 >= 5：pin0 更新
-        CHECK_TRUE(nl.pinOffsetForFrame(5, off, dir.string()));
-        CHECK_TRUE(off[0]==9.f && off[1]==9.f && off[2]==10.f && off[3]==20.f);
+        off = nl.pinOffsetForFrame(3, dir.string());
+        CHECK_TRUE(off != nullptr);
+        CHECK_TRUE((*off)[0]==1.f && (*off)[1]==2.f && (*off)[2]==10.f && (*off)[3]==20.f);
+        // frame 5 >= 5：pin0 更新；后退到 frame 3 仍正确（缓存不依赖上次帧号）
+        off = nl.pinOffsetForFrame(5, dir.string());
+        CHECK_TRUE(off != nullptr);
+        CHECK_TRUE((*off)[0]==9.f && (*off)[1]==9.f && (*off)[2]==10.f && (*off)[3]==20.f);
+        off = nl.pinOffsetForFrame(3, dir.string());
+        CHECK_TRUE(off != nullptr);
+        CHECK_TRUE((*off)[0]==1.f && (*off)[1]==2.f);
     }
 }

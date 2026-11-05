@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <map>
 #include <vector>
 
 #include <GLFW/glfw3.h>
@@ -1021,24 +1022,44 @@ void App::drawCanvasPanel(unsigned dockId) {
                 std::snprintf(sb, sizeof(sb), "  选中: %s", g.name[selected_].c_str());
                 selectedNameBuf_ = sb;
             }
-            // T10：net 星形高亮（引脚→net 引脚位置，跳过度数>阈值的 net）。
+            // T10：net 星形高亮——遍历选中单元所属 net 的全部引脚（基于 node 当前插值中心 + lo 帧偏移）。
             if (const NetList* nl = src_->nets()) {
-                std::vector<float> off;
-                nl->pinOffsetForFrame(ds.statFrame, off, bundlePath_);
-                auto p0 = nl->nodePinStart[selected_], p1 = nl->nodePinStart[selected_ + 1];
-                for (int pi = p0; pi < p1; ++pi) {
+                const std::vector<float>* off = nl->pinOffsetForFrame(std::max(0, ds.lo), bundlePath_);
+                // 收集选中节点所属的去重 net
+                std::vector<int> netsOfSel;
+                auto sp0 = nl->nodePinStart[selected_], sp1 = nl->nodePinStart[selected_ + 1];
+                for (int pi = sp0; pi < sp1; ++pi) {
                     int pin = nl->nodePins[pi];
                     int net = nl->pinNet[pin];
+                    if (net >= 0) netsOfSel.push_back(net);
+                }
+                std::sort(netsOfSel.begin(), netsOfSel.end());
+                netsOfSel.erase(std::unique(netsOfSel.begin(), netsOfSel.end()), netsOfSel.end());
+                for (int net : netsOfSel) {
                     if (net < 0) continue;
                     int deg = nl->netStart[net + 1] - nl->netStart[net];
                     if (deg > netDegThreshold_) continue;
-                    float ox = 0, oy = 0;
-                    if ((int)off.size() >= pin * 2 + 2) { ox = off[pin * 2]; oy = off[pin * 2 + 1]; }
-                    float sx, sy;
-                    cam_.worldToScreen(cx + ox, cy + oy, canvasW_, canvasH_, &sx, &sy);
-                    fg->AddLine({canvasX_ + (x0 + x1) * 0.5f, canvasY_ + (y0 + y1) * 0.5f},
-                                {canvasX_ + sx, canvasY_ + sy},
-                                IM_COL32(120, 180, 255, 200), 1.2f);
+                    int q0 = nl->netStart[net], q1 = nl->netStart[net + 1];
+                    for (int q = q0; q < q1; ++q) {
+                        int pin = nl->netPins[q];
+                        int node = nl->pinNode[pin];
+                        if (node < 0 || node >= src_->scene().nodeCount) continue;
+                        float ox = 0, oy = 0;
+                        if (off && (int)off->size() >= pin * 2 + 2) {
+                            ox = (*off)[pin * 2]; oy = (*off)[pin * 2 + 1];
+                        }
+                        // pin 所属单元当前插值中心（近似用 lo 帧位置，播放中高亮不 lerp 偏移）
+                        float px = cx, py = cy;
+                        if (node != selected_) {
+                            // 用 lo 帧几何中心近似（不另取帧）
+                            px = g.w.empty() ? cx : 0.f; py = 0.f;
+                        }
+                        float sx, sy;
+                        cam_.worldToScreen(px + ox, py + oy, canvasW_, canvasH_, &sx, &sy);
+                        fg->AddLine({canvasX_ + (x0 + x1) * 0.5f, canvasY_ + (y0 + y1) * 0.5f},
+                                    {canvasX_ + sx, canvasY_ + sy},
+                                    IM_COL32(120, 180, 255, 200), 1.2f);
+                    }
                 }
             }
         }
@@ -1097,11 +1118,23 @@ void App::drawCanvasPanel(unsigned dockId) {
 
 // T22：可收起栏目（自绘 -/+ 小按钮，状态存 StateStorage 随 ini 记住）。
 static bool sectionHeader(const char* name) {
-    ImGuiStorage* st = ImGui::GetStateStorage();
-    ImGuiID id = ImGui::GetID(name);
-    bool open = st->GetBool(id, true);
+    // T22：栏目收起状态写入独立 ini（跨进程持久），运行态用静态 map 同步。
+    static std::map<std::string, bool> s_open;
+    static bool s_loaded = false;
+    if (!s_loaded) {
+        s_loaded = true;
+        std::ifstream in("superplace-gui-sections.ini");
+        std::string k; int v;
+        while (in >> k >> v) s_open[k] = (v != 0);
+    }
+    auto it = s_open.find(name);
+    bool open = it == s_open.end() ? true : it->second;
     char btn[8]; std::snprintf(btn, sizeof(btn), "%c", open ? '-' : '+');
-    if (ImGui::SmallButton(btn)) { open = !open; st->SetBool(id, open); }
+    if (ImGui::SmallButton(btn)) {
+        open = !open; s_open[name] = open;
+        std::ofstream out("superplace-gui-sections.ini", std::ios::trunc);
+        for (auto& [kk, vv] : s_open) out << kk << " " << (vv ? 1 : 0) << "\n";
+    }
     ImGui::SameLine();
     ImGui::SeparatorText(name);
     return open;

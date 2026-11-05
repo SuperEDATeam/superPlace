@@ -39,10 +39,8 @@ struct NetList {
     // pin→net：pinNet[pin] = net 下标
     std::vector<int> pinNet;
 
-    // 第 f 帧引脚 p 的偏移：基础 + 所有 frame<=f 更新累积。
-    // 返回交错 dx,dy（长度 2*pinCount）。更新文件首次访问即读入并缓存。
-    // 失败返回 false。同一 f 直接复用缓存快照，不每帧打开文件/拷贝。
-    bool pinOffsetForFrame(int f, std::vector<float>& out, const std::string& bundleDir) const;
+    // 返回只读引用（同一 f 复用缓存，不每帧拷贝）；失败返回 nullptr。
+    const std::vector<float>* pinOffsetForFrame(int f, const std::string& bundleDir) const;
 
     // 内部缓存
     mutable int cachedFrame_ = -1;

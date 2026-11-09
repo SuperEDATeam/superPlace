@@ -128,8 +128,21 @@ cd build && ctest --output-on-failure     # 开工前先确认全部通过
 | --- | --- | --- | --- |
 | `test_data/adaptec1`（ISPD2005） | 仓库自带压缩包，首次 `cmake` 配置时自动解压 | 21 万单元；**固定宏在 core 内部**，会把行切成多段 | 主力调试 |
 | `test_data/mms_adaptec1`（MMS） | 同上 | 宏原本可移动，mLG 后被钉死 | 验收 |
-| `benchmarks/ispd2006/newblue1` | **不在仓库里**，由算法侧线下提供（约 55 MB） | 33 万单元、64 个宏 | 验收与演示 |
+| `benchmarks/ispd2006/newblue1` | **不在仓库里**；算法侧已线下发过原始压缩包 `benchmarks/_dl/newblue1.tar.gz`（7 MB），按下面的命令解压 | 33 万单元、64 个宏 | 验收与演示 |
 | `test_data/thin1` | 仓库自带 | 很小 | 冒烟测试 |
+
+**解压 newblue1**：压缩包里是 6 个各自 gzip 过的文件、没有目录层级，所以要先建好目录，再解包、再 `gunzip` 一次
+（其他设计的解包方法见 [04 §6.2](04-Benchmark%20调研与获取指南.md)，`benchmarks/README.md` 也有说明）：
+
+```bash
+mkdir -p benchmarks/ispd2006/newblue1
+tar xzf benchmarks/_dl/newblue1.tar.gz -C benchmarks/ispd2006/newblue1
+gunzip -f benchmarks/ispd2006/newblue1/*.gz
+./build/superplace-cli --aux benchmarks/ispd2006/newblue1/newblue1.aux --stage parse   # 校验能读通
+```
+
+解压后目录里应有 `newblue1.aux / .nets / .nodes / .pl / .scl / .wts` 六个文件，共约 55 MB；
+结果目录下 `summary.json` 里的 `num_objects`、`num_nets`、`num_pins` 应为 330474、338901、1244342。
 
 跑一次完整流程（adaptec1 上全局布局约 20 秒）：
 
@@ -366,7 +379,7 @@ Collapse(c):       x_c = q_c / e_c
 | 项 | 说明 | 时间 |
 | --- | --- | --- |
 | **检查器 `superplace-check`**（`tools/check/`） | 05 §4.6 要求检查器**独立实现**，不能与合法化器共用任何几何判定代码，也不应由写合法化器的同一个人来写——共享代码会共享 bug，检查就失去意义。读入 `.aux` 与一个 `.pl`，输出重叠、越界、未对齐行与 site 的统计和 PASS / FAIL（格式见 05 §4.6） | 在你进入 M5-5 之前交付 |
-| newblue1 数据 | 线下提供 `benchmarks/ispd2006/newblue1/` | 开工时 |
+| newblue1 数据 | 已线下发过 `benchmarks/_dl/newblue1.tar.gz`，同伴按 §3 解压即可；若压缩包丢失再重发 | 已完成 |
 | 是否把 `lg` 加入默认流程与演示 | 合入后由算法侧决定是否改 `configs/default.json` 的 `stages`、`scripts/viz.sh` 与 06 §3.10 的命令行 | 合入后 |
 | 前端显示 `lg` 阶段 | 回放里会自动多出一个「lg 结束」的里程碑帧；阶段配色等由前端任务处理 | 合入后 |
 

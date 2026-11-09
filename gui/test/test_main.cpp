@@ -2,8 +2,12 @@
 #include "test_util.h"
 
 void testCamera();
+void testCull();
+void testCullExtra();
 void testKind();
 void testBundle();
+void testNets();
+void testDisplacement();
 void testSpatial();
 void testDensity();
 void testFrameMap();
@@ -33,8 +37,12 @@ void testDensityCacheLifetime();
 
 int main() {
     testCamera();
+    testCull();
+    testCullExtra();
     testKind();
     testBundle();
+    testNets();
+    testDisplacement();
     testSpatial();
     testDensity();
     testFrameMap();

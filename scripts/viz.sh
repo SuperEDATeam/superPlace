@@ -14,7 +14,7 @@
 #
 #   --rerecord     即使录过也重新录（算法代码改过之后用）
 #   --stride N     每 N 轮迭代录一帧，默认 10
-#   其余参数原样交给查看器，例如 --frame -1、--compare
+#   其余参数原样交给查看器，例如 --frame -1
 #
 # 录制结果存在 results/play/<套件>/<设计>/viz/，按套件分开，避免同名设计互相覆盖。
 set -euo pipefail

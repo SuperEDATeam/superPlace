@@ -23,15 +23,20 @@ int main(int argc, char** argv) {
             std::printf(
                 "superplace-viz —— superPlace 布局查看器\n\n"
                 "用法: superplace-viz [bundle 目录] [--no-vsync]\n"
-                "          [--bench N] [--screenshot out.ppm] [--shot-after 秒]\n\n"
+                "          [--width W] [--height H]\n"
+                "          [--frame N] [--bench N] [--bench-ui N] [--bench-csv FILE]\n"
+                "          [--zoom F] [--center X Y] [--paused] [--no-cull]\n"
+                "          [--screenshot out.ppm] [--shot-after 秒]\n\n"
                 "bundle 由 scripts/make_viz.py 生成，格式见\n"
                 "work_report/06-前端开发方案与接口契约.md\n");
             return 0;
         }
         if (a == "--no-vsync") {
-            opt.vsync = false;      // 跑帧率基准时用，否则被 vsync 钳在 60
+            opt.vsync = false;
             continue;
         }
+        if (a == "--width" && i + 1 < argc) { opt.width = std::atoi(argv[++i]); continue; }
+        if (a == "--height" && i + 1 < argc) { opt.height = std::atoi(argv[++i]); continue; }
         if (a == "--bench" && i + 1 < argc) {
             opt.benchFrames = std::atoi(argv[++i]);
             continue;
@@ -56,9 +61,17 @@ int main(int argc, char** argv) {
             opt.startFrame = std::atoi(argv[++i]);
             continue;
         }
-        if (a == "--compare") {
-            opt.compareOn = true;   // 自检：启动即开启两帧对比（T8 截图验证）
-            continue;
+        if (a == "--zoom" && i + 1 < argc) { opt.zoomFactor = std::atof(argv[++i]); continue; }
+        if (a == "--center" && i + 2 < argc) {
+            opt.centerX = std::atof(argv[i + 1]);
+            opt.centerY = std::atof(argv[i + 2]);
+            i += 2; continue;
+        }
+        if (a == "--no-cull") { opt.renderCull = false; continue; }
+        if (a == "--paused") { opt.paused = true; continue; }
+        if (a.rfind("--", 0) == 0) {
+            std::fprintf(stderr, "superplace-viz: 未知参数 '%s'（用 -h 查看帮助）\n", a.c_str());
+            return 2;
         }
         opt.initialBundle = a;
     }

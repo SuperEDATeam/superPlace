@@ -1,4 +1,5 @@
 #include "render/canvas.h"
+#include "render/cull.h"
 
 #include <chrono>
 #include <string>
@@ -16,14 +17,19 @@ const float kColors[4][4] = {
     {0.96f, 0.59f, 0.16f, 0.90f},   // 宏 橙
 };
 
-// 连续色表（T7 局部密度 / T8 位移量共用）：蓝 -> 绿 -> 红。
+// 连续色表：viridis 5 控制点（shader 与 CPU legend 共用，见 app.cpp 色条）。
 const char* kCmapGLSL = R"(
 vec3 cmap(float t) {
     t = clamp(t, 0.0, 1.0);
-    vec3 lo = vec3(0.15, 0.25, 0.85);
-    vec3 mid = vec3(0.20, 0.80, 0.40);
-    vec3 hi = vec3(0.92, 0.25, 0.20);
-    return t < 0.5 ? mix(lo, mid, t * 2.0) : mix(mid, hi, t * 2.0 - 1.0);
+    vec3 c0 = vec3(0.267, 0.005, 0.329);
+    vec3 c1 = vec3(0.229, 0.322, 0.545);
+    vec3 c2 = vec3(0.127, 0.566, 0.550);
+    vec3 c3 = vec3(0.369, 0.789, 0.383);
+    vec3 c4 = vec3(0.992, 0.906, 0.144);
+    if (t < 0.25) return mix(c0, c1, t * 4.0);
+    if (t < 0.5)  return mix(c1, c2, (t - 0.25) * 4.0);
+    if (t < 0.75) return mix(c2, c3, (t - 0.5) * 4.0);
+    return mix(c3, c4, (t - 0.75) * 4.0);
 }
 )";
 
@@ -222,23 +228,35 @@ void Canvas::setGeometry(const NodeGeometry& geom) {
     const size_t n = static_cast<size_t>(count_);
 
     std::vector<float> size(n * 2), kind(n);
+    halfW_.assign(n, 0.f);
+    halfH_.assign(n, 0.f);
+    geomKind_.assign(n, 0.f);
     for (size_t i = 0; i < n; ++i) {
-        // 零面积的 terminal_NI（MMS 数据里有几百个）直接把尺寸置 0 即可。
-        // 亚像素保护写的是 `aSize * max(1.0, ...)`，0 乘任何数还是 0，
-        // 退化四边形不产生任何片元，GPU 自己就消掉了——不需要额外的 discard 分支，
-        // 更不能把 kind 设成 -1 去索引 uColors[]，那是越界 UB。
         const bool skip = (geom.flags[i] & F_NI) != 0 || geom.w[i] <= 0.f || geom.h[i] <= 0.f;
         size[i * 2] = skip ? 0.f : geom.w[i];
         size[i * 2 + 1] = skip ? 0.f : geom.h[i];
         kind[i] = static_cast<float>(geom.kind[i]);
+        halfW_[i] = skip ? 0.f : geom.w[i] * 0.5f;
+        halfH_[i] = skip ? 0.f : geom.h[i] * 0.5f;
+        geomKind_[i] = kind[i];
     }
+    staticSizeBuf_ = std::move(size);
+    staticKindBuf_ = std::move(kind);
+    activeCenter_.assign(n * 2, 0.f);
+    activeValue_.assign(n, 0.f);
+    activeIndex_.assign(n, 0);
+    cachedActiveIndex_.assign(n, 0);
+    fullMode_ = false;
+    mappingDirty_ = true;
+    geomDirty_ = true;
+    activeCount_ = 0;
 
     glBindBuffer(GL_ARRAY_BUFFER, bufSize_);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n * 2 * sizeof(float)), size.data(),
-                 GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n * 2 * sizeof(float)),
+                 staticSizeBuf_.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, bufKind_);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n * sizeof(float)), kind.data(),
-                 GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n * sizeof(float)),
+                 staticKindBuf_.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, bufCenter_);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(n * 2 * sizeof(float)), nullptr,
                  GL_DYNAMIC_DRAW);
@@ -256,22 +274,23 @@ void Canvas::setPositions(const float* x, const float* y, int count) {
         interleaved_[static_cast<size_t>(i) * 2] = x[i];
         interleaved_[static_cast<size_t>(i) * 2 + 1] = y[i];
     }
-    glBindBuffer(GL_ARRAY_BUFFER, bufCenter_);
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    static_cast<GLsizeiptr>(interleaved_.size() * sizeof(float)),
-                    interleaved_.data());
+    if (!cullEnabled_) {
+        // fastpath：全量上传，与旧版一致。
+        glBindBuffer(GL_ARRAY_BUFFER, bufCenter_);
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+                        static_cast<GLsizeiptr>(interleaved_.size() * sizeof(float)),
+                        interleaved_.data());
+    }
+    geomDirty_ = true;
+    // positions 更新不使 mapping（视口/隐藏层）失效。
     uploadMs_ = std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - t0).count();
 }
 
 void Canvas::setContinuousValues(const float* values, int count) {
     if (count != count_ || count_ <= 0 || !values) return;
-    // R3：类别模式下不激活连续值，直接跳过 bufValue_ 上传，避免无效 n 浮点传输。
-    if (!valueActive_) return;
-    glBindBuffer(GL_ARRAY_BUFFER, bufValue_);
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    static_cast<GLsizeiptr>(static_cast<size_t>(count) * sizeof(float)),
-                    values);
+    std::copy(values, values + count, values_.begin());
+    geomDirty_ = true;
 }
 
 void Canvas::setHeatmap(const float* norm, int cols, int rows, float maxNorm) {
@@ -304,8 +323,92 @@ void Canvas::setHeatmap(const float* norm, int cols, int rows, float maxNorm) {
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
+int Canvas::rebuildActive(float*, bool geomUpload) {
+    if (count_ <= 0) return 0;
+    // 每帧都按当前位置重新判定可见集（offscreen→on-viewport 不能漏）。
+    const float halfW = curViewW_ * 0.5f / curCam_.scale;
+    const float halfH = curViewH_ * 0.5f / curCam_.scale;
+    const float pxPad = minPixelSize * 0.5f / curCam_.scale;
+    float x0 = curCam_.cx - halfW - pxPad, x1 = curCam_.cx + halfW + pxPad;
+    float y0 = curCam_.cy - halfH - pxPad, y1 = curCam_.cy + halfH + pxPad;
+    // 复用 cull.h 纯函数（与单测同一 predicate）。
+    // 先把 interleaved 转成纯 cx/cy 数组喂给 helper，避免复制两份公式。
+    tmpCx_.assign(count_, 0.f); tmpCy_.assign(count_, 0.f);
+    for (int i = 0; i < count_; ++i) {
+        tmpCx_[i] = interleaved_[i * 2];
+        tmpCy_[i] = interleaved_[i * 2 + 1];
+    }
+    std::vector<int> idx = cullVisible(tmpCx_.data(), tmpCy_.data(),
+                                       halfW_.data(), halfH_.data(),
+                                       geomKind_.data(), count_, layerVisible,
+                                       x0, x1, y0, y1);
+    int n = (int)idx.size();
+    for (int j = 0; j < n; ++j) {
+        int i = idx[j];
+        activeCenter_[j * 2] = tmpCx_[i]; activeCenter_[j * 2 + 1] = tmpCy_[i];
+        activeValue_[j] = values_[i];
+        activeIndex_[j] = i;
+    }
+    // 精确比对 activeIndex 序列（与上一帧缓存），一致才省 size/kind 上传。
+    bool setChanged = geomUpload || n != activeCount_;
+    if (!setChanged) {
+        for (int j = 0; j < n; ++j)
+            if (activeIndex_[j] != cachedActiveIndex_[j]) { setChanged = true; break; }
+    }
+    if (setChanged) std::copy(activeIndex_.begin(), activeIndex_.begin() + n, cachedActiveIndex_.begin());
+    // 视口覆盖全部节点：进入 fullMode，后续帧跳过筛选。
+    fullMode_ = (n == count_);
+    if (setChanged) {
+        tmpSize_.assign(n * 2, 0.f);
+        tmpKind_.assign(n, 0.f);
+        for (int j = 0; j < n; ++j) {
+            int i = activeIndex_[j];
+            tmpSize_[j * 2] = staticSizeBuf_[i * 2];
+            tmpSize_[j * 2 + 1] = staticSizeBuf_[i * 2 + 1];
+            tmpKind_[j] = staticKindBuf_[i];
+        }
+        glBindBuffer(GL_ARRAY_BUFFER, bufSize_);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, n * 2 * sizeof(float), tmpSize_.data());
+        glBindBuffer(GL_ARRAY_BUFFER, bufKind_);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, n * sizeof(float), tmpKind_.data());
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, bufCenter_);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, n * 2 * sizeof(float), activeCenter_.data());
+    if (valueActive_) {
+        glBindBuffer(GL_ARRAY_BUFFER, bufValue_);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, n * sizeof(float), activeValue_.data());
+    }
+    return n;
+}
+
 void Canvas::draw(const Camera& cam, int viewW, int viewH) {
     if (count_ <= 0 || viewW <= 0 || viewH <= 0) return;
+    int active = count_;
+    if (cullEnabled_) {
+        bool camChanged = cam.cx != curCam_.cx || cam.cy != curCam_.cy ||
+            cam.scale != curCam_.scale || viewW != curViewW_ || viewH != curViewH_;
+        if (camChanged) { curCam_ = cam; curViewW_ = viewW; curViewH_ = viewH; mappingDirty_ = true; fullMode_ = false; }
+        if (fullMode_ && !mappingDirty_) {
+            // 全视口覆盖：直接全量上传 center，跳过筛选。
+            glBindBuffer(GL_ARRAY_BUFFER, bufCenter_);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, interleaved_.size() * sizeof(float), interleaved_.data());
+            if (valueActive_) {
+                glBindBuffer(GL_ARRAY_BUFFER, bufValue_);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, values_.size() * sizeof(float), values_.data());
+            }
+            active = count_;
+        } else {
+            if (geomDirty_ || mappingDirty_) {
+                activeCount_ = rebuildActive(nullptr, mappingDirty_);
+                geomDirty_ = false; mappingDirty_ = false;
+            }
+            active = activeCount_;
+        }
+    } else {
+        activeCount_ = count_;
+        active = count_;
+    }
+    if (active <= 0) return;
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -319,8 +422,6 @@ void Canvas::draw(const Camera& cam, int viewW, int viewH) {
     glUniform1f(uValueMin_, valMin_);
     glUniform1f(uValueMax_, valMax_);
 
-    // 隐藏某类就把它的 alpha 置 0，片元里 discard。比按类拆多个 draw call
-    // 简单得多，而 33 万实例下 GPU 完全不在乎这点无效片元。
     float cols[16];
     for (int k = 0; k < 4; ++k) {
         for (int c = 0; c < 3; ++c) cols[k * 4 + c] = kColors[k][c];
@@ -328,7 +429,7 @@ void Canvas::draw(const Camera& cam, int viewW, int viewH) {
     }
     glUniform4fv(uColors_, 4, cols);
 
-    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, count_);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, active);
     glBindVertexArray(0);
     glUseProgram(0);
 }
@@ -340,7 +441,7 @@ void Canvas::drawHeatmapOverlay(const Camera& cam, int viewW, int viewH,
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glUseProgram(hmProg_);
     glBindVertexArray(hmVao_);
-    glActiveTexture(0);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, hmTex_);
     glUniform1i(hmUTex_, 0);
     glUniform4f(hmUView_, cam.cx, cam.cy, cam.scale, 0.f);

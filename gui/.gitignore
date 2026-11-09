@@ -20,3 +20,5 @@ data/
 test/review/
 .idea/
 .vscode/
+build-asan/
+build/

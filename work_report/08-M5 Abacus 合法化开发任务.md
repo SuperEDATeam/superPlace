@@ -378,12 +378,54 @@ Collapse(c):       x_c = q_c / e_c
 
 | 项 | 说明 | 时间 |
 | --- | --- | --- |
-| **检查器 `superplace-check`**（`tools/check/`） | 05 §4.6 要求检查器**独立实现**，不能与合法化器共用任何几何判定代码，也不应由写合法化器的同一个人来写——共享代码会共享 bug，检查就失去意义。读入 `.aux` 与一个 `.pl`，输出重叠、越界、未对齐行与 site 的统计和 PASS / FAIL（格式见 05 §4.6） | 在你进入 M5-5 之前交付 |
+| **检查器 `superplace-check`**（`tools/check/`） | 05 §4.6 要求检查器**独立实现**，不能与合法化器共用任何几何判定代码，也不应由写合法化器的同一个人来写——共享代码会共享 bug，检查就失去意义。用法与判定口径见下文 | ✅ 已交付（2026-11-09） |
 | newblue1 数据 | 已线下发过 `benchmarks/_dl/newblue1.tar.gz`，同伴按 §3 解压即可；若压缩包丢失再重发 | 已完成 |
 | 是否把 `lg` 加入默认流程与演示 | 合入后由算法侧决定是否改 `configs/default.json` 的 `stages`、`scripts/viz.sh` 与 06 §3.10 的命令行 | 合入后 |
 | 前端显示 `lg` 阶段 | 回放里会自动多出一个「lg 结束」的里程碑帧；阶段配色等由前端任务处理 | 合入后 |
 
-在检查器交付之前，用 M5-3 的自检与 M5-4 的单测自测；**最终验收以检查器为准**。
+开发期用 M5-3 的自检与 M5-4 的单测自测；**最终验收以检查器为准**。
+
+### 9.1 检查器用法与判定口径
+
+```bash
+./build/superplace-check <design.aux> [placement.pl] [--examples N] [--eps E] [--max-pairs N]
+# 例：./build/superplace-check test_data/adaptec1/adaptec1.aux results/lgdev/adaptec1/adaptec1.lg.pl
+```
+
+不给 `.pl` 时检查 `.aux` 自带的那份。退出码 0 = PASS、1 = FAIL、2 = 参数或输入错误。输出示例（newblue1 的 GP 结果，未合法化）：
+
+```
+Nodes:          330137 movable (330073 cells, 64 macros), 337 fixed, 0 ignored
+Rows:           930 subrows, row height 12, core (609, 616)-(11783, 11776)
+Overlap:        703979 pairs, 2.43458e+07 area
+                单元-单元 698425，单元-宏 5554，单元-固定 0，宏-宏 0，宏-固定 0
+Out of core:    0
+Off-row:        329849
+Off-site:       224
+HPWL:           82274082.08
+Result:         FAIL
+```
+
+FAIL 时会列出每类违规的前几个例子（节点名与坐标），`--examples` 控制个数。判定口径：
+
+| 项 | 规则 |
+| --- | --- |
+| 对象分类 | 只看 `.nodes`：`terminal` / `terminal_NI` 是固定物体，其余是可移动节点。`.pl` 里的 `/FIXED` 不作数（superPlace 写出时会给 mLG 钉死的宏也加 `/FIXED`） |
+| 标准单元与宏 | 可移动节点高度不超过行高的是标准单元，否则按宏处理 |
+| Off-row | 标准单元：底边要落在某个子行上，且整体在该子行的水平范围内。宏：底边要落在某个子行的 y 上 |
+| Off-site | 在行上的节点，左边缘要对齐所在子行的 site 网格（`(x - 子行 lx) / site` 为整数） |
+| Out of core | 可移动节点不得越出全部子行的外包矩形 |
+| Overlap | 只统计「可移动-可移动」与「可移动-固定」，固定物体之间的重叠是输入数据自带的，不计。只碰边不算重叠 |
+| 忽略 | `terminal_NI` 与零面积节点不参与任何几何检查 |
+| HPWL | 引脚 = 节点中心 + 按 `.pl` 方向（N/S/FN/FS 等）变换后的 `.nets` 偏移；度数小于 2 的 net 不计 |
+| 容差 | 坐标比较容差 `1e-3`（`--eps` 可改） |
+
+**已做的验证**：手写小设计上的 8 个用例已进 `ctest`（`ctest -L check`）；
+newblue1 的 GP 结果上，检查器算出的 HPWL（82274082.08）与引擎的 `gp_hpwl`（82274082.07）一致，两份实现完全独立；
+用一份贪心装箱得到的 newblue1 合法布局判为 PASS，再故意改坏几个单元，各类计数与改动一一对应；
+全部单元堆在一点的输入布局，重叠数到 2000 万对即停止计数，0.5 秒给出结论。newblue1 规模的检查耗时约 0.7 秒。
+
+> 合法化器的 HPWL 增幅可以拿检查器的 HPWL 输出核对：检查器对同一份 `.pl` 算出的 HPWL，应与 `lg_hpwl` 只差浮点舍入。
 
 ---
 

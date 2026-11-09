@@ -18,7 +18,7 @@ ePlace 静电场模型 + Nesterov 加速梯度（全局布局）→ Abacus 合�
 | **M2′** | 泊松求解器（DCT / FFTW） | ✅ 完成 |
 | **M3** | ePlace 全局布局四阶段（任务 5 + 任务 7 宏部分） | ✅ 完成 |
 | M4 | GDSII 分层导出（任务 6） | 未开始 |
-| M5 | Abacus 合法化（任务 7） | 未开始 |
+| M5 | Abacus 合法化（任务 7） | 进行中：检查器 `superplace-check` 已完成；合法化器见 [08](work_report/08-M5%20Abacus%20合法化开发任务.md) |
 | M6 | 大规模 benchmark（ISPD2005 全套；MMS 已于 M3 提前引入） | 未开始 |
 | M7 | CUDA 泊松求解器 | 未开始 |
 
@@ -111,6 +111,13 @@ scripts/viz.sh --help             # 全部用法
 cd build && ctest --output-on-failure
 ```
 
+**合法性检查**：`superplace-check` 读入 `.aux` 与一份 `.pl`，报告重叠、越界、未对齐行与 site 的统计和 HPWL，
+退出码 0 = PASS、1 = FAIL、2 = 输入错误。它刻意不链接 libsuperplace，BookShelf 解析器也是自带的一份（05 §4.6）：
+
+```bash
+./build/superplace-check test_data/adaptec1/adaptec1.aux results/adaptec1/adaptec1.lg.pl
+```
+
 测试数据随仓库提供：`test_data/thin1/`（208 KB）原样入库；`test_data/adaptec1/`（40 MB）以
 `adaptec1.tar.xz`（2.9 MB）入库，**首次 `cmake` 配置时自动解压**，不需要手动下载。
 `adaptec4` 没有测试用到，不入库。
@@ -129,6 +136,7 @@ cd build && ctest --output-on-failure
 | `test_macro_sa` | 宏合法化：零重叠、行对齐、增量线长与全量一致、确定性 |
 | `test_viz_writer` | 前端回放 bundle 写出器：只写真实节点、重复帧跳过、标志位在开跑前取定、网表与引脚偏移更新 |
 | `test_eplace` | mGP 主循环：密度项符号、已达标不动、停滞保护、cGP 宏冻结、确定性 |
+| `check_*`（8 个，`ctest -L check`） | 合法性检查器：手写小设计上的合法布局、重叠、压到固定块、未对齐 site、不在行上、越界、宏未对齐、宏翻转后的 HPWL |
 
 ## 目录
 

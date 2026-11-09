@@ -1,0 +1,10 @@
+UCLA nodes 1.0
+# superplace-check 的测试夹具：2 行 × 20 个 site，core = (0,0)-(20,20)
+NumNodes : 6
+NumTerminals : 2
+c1 4 10
+c2 4 10
+c3 3 10
+m1 6 20
+t1 4 10 terminal
+p1 0 0 terminal_NI

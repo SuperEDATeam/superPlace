@@ -47,6 +47,25 @@ sp_add_test(test_filler)
 sp_add_test(test_macro_sa)
 sp_add_test(test_eplace)
 sp_add_test(test_viz_writer)
+
+# ------------------------------------------------------- 合法性检查器（05 §4.6）
+# 夹具 check/tiny.*：2 行 × 20 site，3 个单元、1 个跨两行的宏、1 个固定块、1 个零面积引脚。
+# 每个 .pl 只犯一种错，断言具体数值而不只是 PASS / FAIL。单独跑：ctest -L check。
+function(sp_check_case name pl regex)
+    add_test(NAME check_${name}
+             COMMAND superplace-check ${CMAKE_CURRENT_SOURCE_DIR}/check/tiny.aux
+                     ${CMAKE_CURRENT_SOURCE_DIR}/check/${pl})
+    set_tests_properties(check_${name} PROPERTIES LABELS check PASS_REGULAR_EXPRESSION "${regex}")
+endfunction()
+sp_check_case(legal      tiny.pl      "HPWL: +21\\.5\nResult: +PASS")
+sp_check_case(overlap    overlap.pl   "Overlap: +1 pairs, 20 area.*Result: +FAIL")
+sp_check_case(cell_fixed cellfixed.pl "单元-固定 1.*Result: +FAIL")
+sp_check_case(off_site   offsite.pl   "Off-site: +1\n.*Result: +FAIL")
+sp_check_case(off_row    offrow.pl    "Off-row: +1\n.*Result: +FAIL")
+sp_check_case(out_core   outcore.pl   "Out of core: +1\n.*Result: +FAIL")
+sp_check_case(macro_site macrosite.pl "Off-site: +1\n.*Result: +FAIL")
+sp_check_case(flipped    flipped.pl   "HPWL: +17\\.5\nResult: +PASS")
+
 if(ENABLE_CUDA)
     sp_add_test(test_poisson_parity)   # CPU 与 CUDA 泊松后端逐点对拍
 endif()

@@ -125,6 +125,11 @@ add_executable(superplace-mlg-replay tools/mlg_replay/main.cpp)
 target_link_libraries(superplace-mlg-replay PRIVATE superplace)
 target_compile_options(superplace-mlg-replay PRIVATE -Wall -Wextra)
 
+# 合法性检查器（05 §4.6）：刻意不链接 libsuperplace，连 BookShelf 解析器也自带一份，
+# 与布局器不共享任何代码
+add_executable(superplace-check tools/check/main.cpp)
+target_compile_options(superplace-check PRIVATE -Wall -Wextra)
+
 # ------------------------------------------------------------------------ tests
 enable_testing()
 add_subdirectory(test)

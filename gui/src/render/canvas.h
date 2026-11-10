@@ -65,7 +65,7 @@ struct Camera {
 };
 
 /// 着色/着色模式（T7）。Kind 是默认按类别；其余两种走连续色表。
-enum class ColorMode : int { Kind = 0, Density = 1, Displacement = 2 };
+enum class ColorMode : int { Kind = 0, Density = 1, Displacement = 2, NetCount = 3 };
 
 class Canvas {
 public:
@@ -84,6 +84,8 @@ public:
         colorMode_ = mode;
         valueActive_ = (mode != ColorMode::Kind);
     }
+    void setCullEnabled(bool e) { cullEnabled_ = e; }
+    void invalidateMapping() { mappingDirty_ = true; }
     void setValueRange(float mn, float mx) { valMin_ = mn; valMax_ = mx; }
 
     /// T6 热力图：上传归一化密度场（norm/maxNorm 已由调用方算好）。
@@ -100,6 +102,7 @@ public:
     float outlineOnly = 0.f;     ///< 预留：>0 时只画边框（近景检视用）
 
     int   instanceCount() const { return count_; }
+    int   activeCount() const { return activeCount_; }
     double lastUploadMs() const { return uploadMs_; }
 
 private:
@@ -117,6 +120,25 @@ private:
     double uploadMs_ = 0.0;
     std::vector<float> interleaved_;   ///< 位置上传前的交错缓冲，避免每帧分配
     std::vector<float> values_;        ///< 连续属性值缓存
+    // 视口剔除（T-perf）：静态几何半尺寸/类别 + 当前相机，重建可见实例列表。
+    std::vector<float> halfW_, halfH_;
+    std::vector<float> geomKind_;
+    std::vector<float> staticSizeBuf_;
+    std::vector<float> staticKindBuf_;
+    std::vector<float> activeCenter_;
+    std::vector<float> activeValue_;
+    std::vector<float> tmpSize_, tmpKind_;
+    std::vector<float> tmpCx_, tmpCy_;
+    std::vector<int> activeIndex_;
+    std::vector<int> cachedActiveIndex_;
+    Camera curCam_{};
+    int curViewW_ = 0, curViewH_ = 0;
+    bool cullEnabled_ = true;
+    bool fullMode_ = false;       // 视口覆盖全部节点：走全量 buffer，跳过每帧筛选
+    bool geomDirty_ = true;
+    bool mappingDirty_ = true;
+    int activeCount_ = 0;
+    int rebuildActive(float* cullWorldHalf, bool geomUpload);
 
     ColorMode colorMode_ = ColorMode::Kind;
     bool valueActive_ = false;   ///< 连续着色模式才上传 bufValue_

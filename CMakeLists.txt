@@ -157,6 +157,11 @@ if(ENABLE_M3_PAIR)
   endif()
 endif()
 
+# 合法性检查器（05 §4.6）：刻意不链接 libsuperplace，连 BookShelf 解析器也自带一份，
+# 与布局器不共享任何代码
+add_executable(superplace-check tools/check/main.cpp)
+target_compile_options(superplace-check PRIVATE -Wall -Wextra)
+
 # ------------------------------------------------------------------------ tests
 enable_testing()
 add_subdirectory(test)

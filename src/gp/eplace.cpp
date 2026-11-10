@@ -9,6 +9,7 @@
 #include "db/place_db.h"
 #include "gp/bin_grid.h"
 #include "gp/filler.h"
+#include "gp/lambda_schedule.h"
 #include "gp/wa_wirelength.h"
 #include "numeric/optimizer.h"
 #include "numeric/reduction.h"
@@ -204,7 +205,7 @@ EPlace::~EPlace() = default;
 
 void EPlace::setIterCallback(IterCallback cb) { impl_->onIter = std::move(cb); }
 
-GpResult EPlace::run(GpStage stage) {
+GpResult EPlace::run(GpStage stage, GpRunOptions options) {
     Impl& s = *impl_;
     PlaceDB& db = s.db;
     const Config& cfg = s.cfg;
@@ -244,6 +245,12 @@ GpResult EPlace::run(GpStage stage) {
         (stage == GpStage::kCGP) ? cfg.cgp_target_overflow : cfg.target_overflow;
     const int maxIter =
         (stage == GpStage::kFillerOnly) ? cfg.filler_only_iters : cfg.gp_max_iter;
+    const double effectiveRef = hpwlReference(cfg, s.hpwl, stage == GpStage::kFillerOnly);
+    const std::string prefix = std::string(toString(stage)) + "_";
+    s.sink.setSummary(prefix + "initial_hpwl", s.hpwl);
+    s.sink.setSummary(prefix + "initial_overflow", s.tau);
+    s.sink.setSummary(prefix + "initial_lambda", s.lambda);
+    s.sink.setSummary(prefix + "hpwl_reference", effectiveRef);
 
     SP_INFO("%s: %d 个节点参与优化 (bin %dx%d, τ0=%.4f, λ0=%.4g, γ0=%.4g)",
             toString(stage), n, s.grid.dim(), s.grid.dim(), s.tau, s.lambda, s.gamma);
@@ -256,6 +263,10 @@ GpResult EPlace::run(GpStage stage) {
         result.overflow = s.grid.overflow();
         result.hpwl = computeHPWL(db);
         result.converged = true;
+        s.sink.setSummary(prefix + "evaluations", 0);
+        s.sink.setSummary(prefix + "converged", 1);
+        s.sink.setSummary(prefix + "stagnated", 0);
+        s.sink.setSummary(prefix + "rollback_iter", -1);
         SP_INFO("%s: τ0=%.4f 已低于阈值 %.4f，无需优化", toString(stage), result.overflow,
                 targetTau);
         return result;
@@ -313,6 +324,7 @@ GpResult EPlace::run(GpStage stage) {
     bool   stagnated = false;
 
     for (int iter = 0; iter < maxIter; ++iter) {
+        const float evalLambda = s.lambda, evalGamma = s.gamma;
         opt->step(s.pos.data(), 2 * n);
 
         // τ / HPWL 取自本轮最后一次求值的点（Nesterov 的前瞻点 u），这是标准做法：
@@ -324,16 +336,14 @@ GpResult EPlace::run(GpStage stage) {
 
         // λ 调度（05 §5.5.9）。HPWL 涨得越猛，说明密度压得过狠，μ 越小；
         // HPWL 下降时取上界 1.05，继续加大密度权重把单元铺开。
-        if (havePrev) {
-            const double dHpwl = s.hpwl - prevHpwl;
-            const double expo = -dHpwl / static_cast<double>(cfg.delta_hpwl_ref) + 1.0;
-            const double mu = std::pow(1.1, expo);
-            s.lambda *= static_cast<float>(std::min(1.05, std::max(0.95, mu)));
-        }
+        const double dHpwl = havePrev ? s.hpwl - prevHpwl : 0.0;
+        const float mu = havePrev && !options.freezeLambda
+                             ? lambdaMultiplier(dHpwl, effectiveRef) : 1.f;
+        if (havePrev && !options.freezeLambda) s.lambda *= mu;
         prevHpwl = s.hpwl;
         havePrev = true;
 
-        s.gamma = computeGamma(s.tau, s.grid.stepX());
+        if (!options.freezeGamma) s.gamma = computeGamma(s.tau, s.grid.stepX());
 
         IterMetrics m;
         m.iter = iter;
@@ -345,6 +355,11 @@ GpResult EPlace::run(GpStage stage) {
         m.grad_norm_wl = static_cast<float>(s.sumAbsWlGrad);
         m.grad_norm_den = static_cast<float>(s.sumAbsDenForce);
         m.elapsed_ms = stageTimer.elapsedMs();
+        m.eval_lambda = evalLambda;
+        m.eval_gamma = evalGamma;
+        m.delta_hpwl = dHpwl;
+        m.lambda_mu = mu;
+        m.evaluations = opt->evaluations();
         s.sink.push(m);
 
         if (cfg.verbose || iter % 20 == 0) {
@@ -424,6 +439,11 @@ GpResult EPlace::run(GpStage stage) {
     s.grid.accumulate(db);
     result.overflow = s.grid.overflow();
     result.hpwl = computeHPWL(db);
+    result.evaluations = opt->evaluations();
+    s.sink.setSummary(prefix + "evaluations", static_cast<double>(result.evaluations));
+    s.sink.setSummary(prefix + "converged", result.converged ? 1 : 0);
+    s.sink.setSummary(prefix + "stagnated", result.stagnated ? 1 : 0);
+    s.sink.setSummary(prefix + "rollback_iter", result.rollbackIter);
 
     s.sink.endStage(stageTimer.elapsedMs());
     // FILLERONLY 是固定轮数，报"耗尽迭代上限"会误导；且它的 τ 必然不变——

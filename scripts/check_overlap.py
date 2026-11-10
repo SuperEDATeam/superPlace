@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
-"""宏合法化结果的独立核查：从输出 .pl 重算宏-宏与宏-阻挡的重叠，并按类型分账。
+"""宏合法化结果的独立核查：从输出 .pl 重算宏-宏与宏-阻挡重叠，并检查宏出界。
 
 与 mLG 内部的 OverlapModel 完全独立（不同语言、不同实现），用来交叉验证它报的残留重叠。
 用法：scripts/check_overlap.py <design.aux 所在目录> <输出的 .gp.pl>
 """
-import collections, re, sys
+import collections, math, re, sys
 from pathlib import Path
 
 d = Path(sys.argv[1]); pl = Path(sys.argv[2]); name = d.name
+scl = (d / f"{name}.scl").read_text()
 row = collections.Counter(float(m.group(1)) for m in
-                          re.finditer(r"Height\s*:\s*(\S+)", (d / f"{name}.scl").read_text())).most_common(1)[0][0]
+                          re.finditer(r"Height\s*:\s*(\S+)", scl)).most_common(1)[0][0]
+rows = []
+for block in re.findall(r"CoreRow[^\n]*\n(.*?)^\s*End\b", scl, re.S | re.M):
+    fields = dict(re.findall(r"(Coordinate|Height|Sitewidth|Sitespacing)\s*:\s*(\S+)", block))
+    y, height = float(fields["Coordinate"]), float(fields["Height"])
+    step = float(fields.get("Sitespacing", 0)) or float(fields["Sitewidth"])
+    for x, sites in re.findall(r"SubrowOrigin\s*:\s*(\S+)\s+NumSites\s*:\s*(\S+)", block):
+        rows.append((float(x), y, float(x) + int(sites) * step, y + height))
+core = (min(r[0] for r in rows), min(r[1] for r in rows),
+        max(r[2] for r in rows), max(r[3] for r in rows))
 nodes = {}
 for line in open(d / f"{name}.nodes"):
     t = line.split()
@@ -26,6 +36,9 @@ for line in open(pl):
 macros = [n for n, (w, h, term) in nodes.items() if not term and h > row * 1.5]
 blocks = [n for n, (w, h, term) in nodes.items() if term and w > 0 and h > 0]
 R = lambda n: (pos[n][0], pos[n][1], pos[n][0] + nodes[n][0], pos[n][1] + nodes[n][1])
+outside = [n for n in macros if not all(math.isfinite(v) for v in R(n)) or
+           R(n)[0] < core[0] - .01 or R(n)[1] < core[1] - .01 or
+           R(n)[2] > core[2] + .01 or R(n)[3] > core[3] + .01]
 def ov(a, b):
     dx = min(a[2], b[2]) - max(a[0], b[0]); dy = min(a[3], b[3]) - max(a[1], b[1])
     return dx * dy if dx > 0 and dy > 0 else 0.0
@@ -50,7 +63,10 @@ for i, n in enumerate(macros):
                 sb.add(j); o = ov(r, R(blocks[j]))
                 if o > 0: mb += o; pb += 1; worst.append((o, "宏-阻挡", n, blocks[j]))
 print(f"宏 {len(macros)} 个，非零面积阻挡 {len(blocks)} 个")
+print(f"宏出界 {len(outside)} 个")
 print(f"宏-宏   重叠 {mm:.0f}（{pm} 对）")
 print(f"宏-阻挡 重叠 {mb:.0f}（{pb} 对）")
 for o, kind, a, b in sorted(worst, reverse=True)[:5]:
     print(f"  {kind:<5} {o:>10.0f}  {a} {nodes[a][0]:.0f}x{nodes[a][1]:.0f}  vs  {b} {nodes[b][0]:.0f}x{nodes[b][1]:.0f}")
+if "--gate" in sys.argv[3:]:
+    sys.exit(1 if mm + mb > 1e-4 or outside else 0)

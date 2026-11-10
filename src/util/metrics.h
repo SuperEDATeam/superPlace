@@ -20,6 +20,11 @@ struct IterMetrics {
     float  grad_norm_den    = 0.f;
     float  max_displacement = 0.f;
     double elapsed_ms       = 0.0;
+    float  eval_lambda      = 0.f;
+    float  eval_gamma       = 0.f;
+    double delta_hpwl       = 0.0;
+    float  lambda_mu        = 1.f;
+    long   evaluations      = 0;
 };
 
 /// "此刻的布局值得录一帧"的通知（前端回放用，见 io/viz_writer.h）。

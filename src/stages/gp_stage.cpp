@@ -13,6 +13,7 @@
 #include "gp/eplace.h"
 #include "gp/filler.h"
 #include "lg/macro_sa.h"
+#include "io/bookshelf_writer.h"
 #include "plot/cimg_renderer.h"
 #include "util/config.h"
 #include "util/logger.h"
@@ -100,6 +101,8 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
     // 单独补一帧，保证回放的终点就是写进 .pl 的那个布局
     tOffset = mgp.iterations;
     markEnd(GpStage::kMGP, mgp);
+    if (!sink.outputDir().empty())
+        BookshelfWriter::writePl(sink.outputDir() + "/" + cfg.benchmark_name + ".mgp.pl", db);
     sink.setSummary("mgp_hpwl", mgp.hpwl);
     sink.setSummary("mgp_overflow", mgp.overflow);
     sink.setSummary("mgp_iterations", mgp.iterations);

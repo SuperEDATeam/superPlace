@@ -46,6 +46,13 @@ sp_add_test(test_density)
 sp_add_test(test_filler)
 sp_add_test(test_macro_sa)
 sp_add_test(test_eplace)
+sp_add_test(test_lambda_schedule)
+sp_add_test(test_repair_candidates)
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME test_m3_audit COMMAND ${Python3_EXECUTABLE}
+             ${CMAKE_CURRENT_SOURCE_DIR}/test_m3_audit.py)
+endif()
 sp_add_test(test_viz_writer)
 if(ENABLE_CUDA)
     sp_add_test(test_poisson_parity)   # CPU 与 CUDA 泊松后端逐点对拍
@@ -56,6 +63,8 @@ endif()
 # RUN_SERIAL：32 线程用例与其他重负载并行跑会让 WSL 满载重启。
 set(SP_GOLDEN_DESIGNS thin1 adaptec1 mms_adaptec1)
 set(SP_GOLDEN_THREADS 1 8 32)
+option(ENABLE_LEGACY_GOLDEN "Register historical 0.07 golden checks" OFF)
+if(ENABLE_LEGACY_GOLDEN)
 foreach(design IN LISTS SP_GOLDEN_DESIGNS)
     file(GLOB aux "${SP_TEST_DATA_DIR}/${design}/*.aux")
     if(NOT aux)
@@ -66,11 +75,29 @@ foreach(design IN LISTS SP_GOLDEN_DESIGNS)
                  COMMAND ${CMAKE_COMMAND}
                          -DCLI=$<TARGET_FILE:superplace-cli>
                          -DAUX=${aux}
-                         -DCONFIG=${CMAKE_SOURCE_DIR}/configs/default.json
+                         -DCONFIG=${CMAKE_SOURCE_DIR}/configs/m3/legacy-golden.json
                          -DTHREADS=${t}
                          -DOUT=${CMAKE_BINARY_DIR}/golden/${design}_t${t}
                          -DEXPECTED=${CMAKE_CURRENT_SOURCE_DIR}/golden/${design}.sha256
                          -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/run_golden.cmake)
-        set_tests_properties(golden_${design}_t${t} PROPERTIES LABELS golden RUN_SERIAL TRUE)
+        set_tests_properties(golden_${design}_t${t} PROPERTIES LABELS "golden;legacy" RUN_SERIAL TRUE)
+    endforeach()
+endforeach()
+endif()
+
+# New .10-target baseline is independent of the historical .07 hashes.
+foreach(design IN LISTS SP_GOLDEN_DESIGNS)
+    foreach(t IN LISTS SP_GOLDEN_THREADS)
+        file(GLOB aux "${SP_TEST_DATA_DIR}/${design}/*.aux")
+        add_test(NAME m3_golden_${design}_t${t}
+                 COMMAND ${CMAKE_COMMAND}
+                         -DCLI=$<TARGET_FILE:superplace-cli>
+                         -DAUX=${aux}
+                         -DCONFIG=${CMAKE_SOURCE_DIR}/configs/m3/golden.json
+                         -DTHREADS=${t}
+                         -DOUT=${CMAKE_BINARY_DIR}/m3_golden/${design}_t${t}
+                         -DEXPECTED=${CMAKE_SOURCE_DIR}/test/golden/m3/${design}.sha256
+                         -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/run_golden.cmake)
+        set_tests_properties(m3_golden_${design}_t${t} PROPERTIES LABELS "golden;m3" RUN_SERIAL TRUE)
     endforeach()
 endforeach()

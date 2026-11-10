@@ -8,6 +8,7 @@
 
 #include "util/logger.h"
 #include "util/timer.h"
+#include "nlohmann/json.hpp"
 
 namespace fs = std::filesystem;
 
@@ -75,14 +76,16 @@ void MetricsSink::flushStageCsv() const {
         return;
     }
     out << "stage,iter,hpwl,overflow,lambda,gamma,step_size,"
-           "grad_norm_wl,grad_norm_den,max_displacement,elapsed_ms\n";
+           "grad_norm_wl,grad_norm_den,max_displacement,elapsed_ms,"
+           "eval_lambda,eval_gamma,delta_hpwl,lambda_mu,evaluations\n";
     out << std::setprecision(10);
     for (const auto& [stage, rows] : stages_) {
         for (const IterMetrics& m : rows) {
             out << stage << ',' << m.iter << ',' << m.hpwl << ',' << m.overflow << ','
                 << m.lambda << ',' << m.gamma << ',' << m.step_size << ','
                 << m.grad_norm_wl << ',' << m.grad_norm_den << ',' << m.max_displacement
-                << ',' << m.elapsed_ms << '\n';
+                << ',' << m.elapsed_ms << ',' << m.eval_lambda << ',' << m.eval_gamma
+                << ',' << m.delta_hpwl << ',' << m.lambda_mu << ',' << m.evaluations << '\n';
         }
     }
 }
@@ -104,7 +107,7 @@ void MetricsSink::writeSummary(const std::string& path) const {
 
     for (const auto& [k, v] : summary_str_) {
         comma();
-        out << "  \"" << k << "\": \"" << v << "\"";
+        out << "  " << nlohmann::json(k).dump() << ": " << nlohmann::json(v).dump();
     }
     for (const auto& [k, v] : summary_num_) {
         comma();

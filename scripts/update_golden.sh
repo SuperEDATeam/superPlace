@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 BUILD=${1:-build}
 CLI="$BUILD/superplace-cli"
-CFG=configs/default.json
+CFG=${CFG:-configs/m3/legacy-golden.json}
 DESIGNS=${DESIGNS:-"thin1 adaptec1 mms_adaptec1"}
 THREADS=${THREADS:-"1 8 32"}
 

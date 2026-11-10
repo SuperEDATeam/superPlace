@@ -1,4 +1,5 @@
 #include "lg/macro_sa.h"
+#include "lg/repair_candidates.h"
 
 #include <algorithm>
 #include <cmath>
@@ -256,6 +257,7 @@ public:
     float y(int s) const { return cy_[static_cast<size_t>(s)]; }
     const std::vector<float>& xs() const { return cx_; }
     const std::vector<float>& ys() const { return cy_; }
+    const std::vector<Rect>& blockages() const { return blockages_; }
 
     /// 位置与索引的唯一写入口。
     void setPos(int s, float nx, float ny) {
@@ -795,6 +797,25 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     }
     r.overlapAfterSa = overlap;
     r.saMs = timer.elapsedMs();
+    auto recordRepair = [&](const std::string& step) {
+        double sum = 0.0, mx = -1.0;
+        size_t worst = 0;
+        for (size_t s = 0; s < nM; ++s) {
+            const double d = dispOf(static_cast<int>(s), cx[s], cy[s]);
+            sum += d;
+            if (d > mx) { mx = d; worst = s; }
+        }
+        const std::string key = "mlg_" + step + "_";
+        sink.setSummary(key + "overlap", om.total());
+        sink.setSummary(key + "disp_mean", sum / nM);
+        sink.setSummary(key + "disp_max", mx);
+        sink.setSummary(key + "worst_macro", db.node_name[macros[worst]]);
+        sink.setSummary(key + "original_x", x0[worst]);
+        sink.setSummary(key + "original_y", y0[worst]);
+        sink.setSummary(key + "x", cx[worst]);
+        sink.setSummary(key + "y", cy[worst]);
+    };
+    recordRepair("sa");
 
     // ---- 贪心修复：SA 是概率算法，不保证重叠恰好为 0，而"零重叠"是硬验收项。
     //
@@ -872,6 +893,31 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
                     }
                 }
 
+                // Contact candidates supplement (rather than replace) the grid.
+                // Compare only zero-overlap alternatives here: every accepted
+                // move still strictly decreases overlap and retains the fallback.
+                std::vector<Rect> obstacles = om.blockages();
+                for (size_t t = 0; t < nM; ++t)
+                    if (t != s) obstacles.push_back(om.rectOf(static_cast<int>(t), cx[t], cy[t]));
+                const double radius = std::min(zeroLimit,
+                    static_cast<double>(2 + pass) * side);
+                const auto contacts = contactCandidates(x0[s], y0[s], cx[s], cy[s],
+                    om.width(static_cast<int>(s)), om.height(static_cast<int>(s)),
+                    db.coreRegion, obstacles, radius);
+                for (auto [nx0, ny0] : contacts) {
+                    // Snapping can move a contact into an obstacle. Try the
+                    // immediately adjacent site/row as well and recheck geometry.
+                    for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) {
+                        float nx = nx0 + dx * snap.site, ny = ny0 + dy * snap.row;
+                        snap(om, static_cast<int>(s), nx, ny);
+                        const double d = dispOf(static_cast<int>(s), nx, ny);
+                        if (d <= zeroLimit && d < zeroDist &&
+                            om.at(static_cast<int>(s), nx, ny) <= 0.0) {
+                            zeroDist = d; zeroX = nx; zeroY = ny; haveZero = true;
+                        }
+                    }
+                }
+
                 if (haveZero) {
                     om.setPos(static_cast<int>(s), zeroX, zeroY);
                     ++r.repaired;
@@ -898,7 +944,7 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     //
     // "最大重叠对象"含固定阻挡（见 OverlapModel::worstRect）。早期这里只遍历宏，
     // 只压在阻挡上的宏会因"找不到邻居"被跳过——bigblue3 的残留重叠就全是这种。
-    auto separateRepair = [&]() {
+    auto separateRepairImpl = [&](bool preferSmallMove) {
         for (int pass = 0; pass < 30 && overlap > 0.0; ++pass) {
             bool moved = false;
             for (size_t s = 0; s < nM; ++s) {
@@ -914,12 +960,23 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
                 const float cand[4][2] = {{dxL, 0.f}, {dxR, 0.f}, {0.f, dyD}, {0.f, dyU}};
 
                 double bestOv = om.at(si, cx[s], cy[s]);
+                const double currentOv = bestOv;
+                double bestDisp = std::numeric_limits<double>::infinity();
                 float bestPx = cx[s], bestPy = cy[s];
                 for (const auto& d : cand) {
                     float nx = cx[s] + d[0], ny = cy[s] + d[1];
                     snap(om, si, nx, ny);
                     const double o = om.at(si, nx, ny);
-                    if (o < bestOv - 1e-9) { bestOv = o; bestPx = nx; bestPy = ny; }
+                    const double d0 = dispOf(si, nx, ny);
+                    // Several directions often yield the same zero overlap.
+                    // Taking the first one can move a wide macro thousands of
+                    // units horizontally when a small vertical move suffices.
+                    // Require strict overlap descent even when breaking ties.
+                    const bool betterTie = preferSmallMove &&
+                        std::fabs(o - bestOv) <= 1e-9 && d0 < bestDisp;
+                    if (o < currentOv - 1e-9 && (o < bestOv - 1e-9 || betterTie)) {
+                        bestOv = o; bestDisp = d0; bestPx = nx; bestPy = ny;
+                    }
                 }
                 if (bestPx != cx[s] || bestPy != cy[s]) {
                     om.setPos(si, bestPx, bestPy);
@@ -930,6 +987,44 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
             const double after = om.total();
             if (!moved || after >= overlap) { overlap = after; break; }
             overlap = after;
+        }
+    };
+
+    // Local tie improvements can change which macro is repaired later. Compare
+    // the complete separation pass from identical coordinates, rather than
+    // assuming individually shorter moves improve the resulting layout.
+    // Only O(M) coordinates are copied; SA and the large PlaceDB are not rerun.
+    auto separateRepair = [&]() {
+        if (overlap <= 0.0) return;
+        const auto inputX = cx, inputY = cy;
+        const double inputOverlap = overlap;
+        const int inputRepaired = r.repaired;
+        separateRepairImpl(false);
+        const auto legacyX = cx, legacyY = cy;
+        const double legacyOverlap = overlap;
+        const int legacyRepaired = r.repaired;
+        auto displacement = [&]() {
+            double sum = 0.0, mx = 0.0;
+            for (size_t s = 0; s < nM; ++s) {
+                const double d = dispOf(static_cast<int>(s), cx[s], cy[s]);
+                sum += d;
+                mx = std::max(mx, d);
+            }
+            return std::pair<double, double>{sum, mx};
+        };
+        const auto legacyDisp = displacement();
+        for (size_t s = 0; s < nM; ++s)
+            om.setPos(static_cast<int>(s), inputX[s], inputY[s]);
+        overlap = inputOverlap;
+        r.repaired = inputRepaired;
+        separateRepairImpl(true);
+        const auto candidateDisp = displacement();
+        if (overlap > legacyOverlap || candidateDisp.first > legacyDisp.first ||
+            candidateDisp.second > legacyDisp.second) {
+            for (size_t s = 0; s < nM; ++s)
+                om.setPos(static_cast<int>(s), legacyX[s], legacyY[s]);
+            overlap = legacyOverlap;
+            r.repaired = legacyRepaired;
         }
     };
 
@@ -1062,15 +1157,61 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     // 网格搜索先限距，仍有残留才放开距离，并再给分离与推挤一次机会。
     constexpr double kLocalCap = 3.0;
     separateRepair();
+    recordRepair("separate1");
     chainRepair();
+    recordRepair("chain1");
     gridRepair(kLocalCap);
+    recordRepair("local_grid");
     separateRepair();
+    recordRepair("separate2");
     chainRepair();
+    recordRepair("chain2");
     if (overlap > 0.0) {
         gridRepair(std::numeric_limits<double>::infinity());
+        recordRepair("unlimited_grid");
         separateRepair();
         chainRepair();
     }
+    // After legality is established, try pulling the most displaced macro
+    // toward its mGP position. All other macros stay fixed. This also addresses
+    // an SA-originated outlier that a strictly overlap-decreasing repair cannot
+    // revisit. Accept only a shorter, legal position with non-increasing HPWL.
+    if (overlap <= 0.0) {
+        size_t farthest = 0;
+        double maxDistance = 0.0;
+        for (size_t s = 0; s < nM; ++s) {
+            const double d = dispOf(static_cast<int>(s), cx[s], cy[s]);
+            if (d > maxDistance) { maxDistance = d; farthest = s; }
+        }
+        const int si = static_cast<int>(farthest);
+        std::vector<Rect> obstacles = om.blockages();
+        for (size_t s = 0; s < nM; ++s)
+            if (s != farthest) obstacles.push_back(om.rectOf(static_cast<int>(s), cx[s], cy[s]));
+        const auto contacts = contactCandidates(x0[farthest], y0[farthest], cx[farthest],
+            cy[farthest], om.width(si), om.height(si), db.coreRegion, obstacles, maxDistance);
+        float bestX0 = cx[farthest], bestY0 = cy[farthest];
+        double bestDistance = maxDistance;
+        for (auto [px, py] : contacts) {
+            for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) {
+                float nx = px + dx * snap.site, ny = py + dy * snap.row;
+                snap(om, si, nx, ny);
+                const double d = dispOf(si, nx, ny);
+                if (d < bestDistance && om.at(si, nx, ny) <= 0.0) {
+                    bestDistance = d; bestX0 = nx; bestY0 = ny;
+                }
+            }
+        }
+        if (bestDistance < maxDistance) {
+            iwl.total(cx, cy, flipped);  // Repair changed positions since SA.
+            const float ox = cx[farthest], oy = cy[farthest];
+            om.setPos(si, bestX0, bestY0);
+            const double delta = iwl.deltaForMacro(si, cx, cy, flipped, dirty, newVals);
+            if (delta > 0.0) om.setPos(si, ox, oy);
+            sink.setSummary("mlg_postlegal_accepted", delta <= 0.0 ? 1 : 0);
+        }
+    }
+    recordRepair("postlegal");
+    recordRepair("final");
 
     // ---- 写回 db，并把宏钉死，后续 cGP 不再移动它们
     for (size_t s = 0; s < nM; ++s) {

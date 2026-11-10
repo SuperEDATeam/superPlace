@@ -1,6 +1,7 @@
 #include "util/config.h"
 
 #include <fstream>
+#include <cmath>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -91,6 +92,13 @@ void Config::loadJson(const std::string& path) {
         throw std::runtime_error("poisson_backend must be \"cpu\" or \"cuda\", got \"" +
                                  poisson_backend + "\" in " + path);
     get("delta_hpwl_ref", delta_hpwl_ref);
+    get("lambda_schedule", lambda_schedule);
+    get("delta_hpwl_relative", delta_hpwl_relative);
+    if (lambda_schedule != "fixed" && lambda_schedule != "relative")
+        throw std::runtime_error("lambda_schedule must be fixed or relative");
+    if (!(delta_hpwl_ref > 0.f) || !std::isfinite(delta_hpwl_ref) ||
+        !(delta_hpwl_relative > 0.0) || !std::isfinite(delta_hpwl_relative))
+        throw std::runtime_error("HPWL reference scales must be finite and positive");
     get("use_bb", use_bb);
     get("gp_backtrack", gp_backtrack);
     get("gp_stagnation_min_gain", gp_stagnation_min_gain);

@@ -415,6 +415,33 @@ void testDeterminism() {
 // ==========================================================================
 // 6. cGP 期间宏必须逐位不动
 // ==========================================================================
+void testDiagnosticScheduleParameters() {
+    Fixture f = makeFixture(2000, 8);
+    f.cfg.gp_max_iter = 25;
+    sp::initializeFillers(f.db, f.cfg);
+    const auto initial = f.db;
+    sp::MetricsSink sink;
+    { sp::EPlace e(f.db, f.cfg, sink); e.run(sp::GpStage::kMGP); }
+    const auto& rows = sink.stageMetrics("mGP");
+    CHECK_TRUE(rows.size() > 2);
+    for (size_t i = 1; i < rows.size(); ++i) {
+        CHECK_EQ(rows[i].eval_lambda, rows[i - 1].lambda);
+        CHECK_EQ(rows[i].eval_gamma, rows[i - 1].gamma);
+        CHECK_TRUE(rows[i].evaluations > rows[i - 1].evaluations);
+        CHECK_NEAR(rows[i].delta_hpwl, rows[i].hpwl - rows[i - 1].hpwl, 0.0);
+    }
+    f.db = initial;
+    sp::MetricsSink frozen;
+    { sp::EPlace e(f.db, f.cfg, frozen); e.run(sp::GpStage::kMGP, {true, true}); }
+    const auto& fixed = frozen.stageMetrics("mGP");
+    CHECK_TRUE(!fixed.empty());
+    for (const auto& row : fixed) {
+        CHECK_EQ(row.eval_lambda, fixed.front().eval_lambda);
+        CHECK_EQ(row.eval_gamma, fixed.front().eval_gamma);
+        CHECK_EQ(row.lambda_mu, 1.f);
+    }
+}
+
 void testMacrosFrozenInCgp() {
     Fixture f = makeFixture(2000, 10);
     sp::MetricsSink sink;
@@ -496,6 +523,7 @@ int main() {
         {"停滞保护", testStagnationGuard},
         {"停滞回退点", testStagnationRollbackPoint},
         {"确定性", testDeterminism},
+        {"诊断参数对齐", testDiagnosticScheduleParameters},
         {"cGP宏冻结", testMacrosFrozenInCgp},
         {"质量带", testQualityBand},
     };

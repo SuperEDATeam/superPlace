@@ -38,6 +38,13 @@ struct GpResult {
     /// 录帧（前端回放）要在这里标断点，否则插值会画出单元"往回走"的假动作。
     bool   stagnated    = false;
     int    rollbackIter = -1;    ///< 回退到的轮次；未回退为 -1
+    long   evaluations = 0;
+};
+
+/// Diagnostic ablations; never selected by the production CLI.
+struct GpRunOptions {
+    bool freezeGamma = false;
+    bool freezeLambda = false;
 };
 
 /// 一次全局布局的执行体。构造时完成 bin 网格初始化等一次性工作，
@@ -51,7 +58,7 @@ public:
     EPlace& operator=(const EPlace&) = delete;
 
     /// 执行一个阶段，结束时 db 中的坐标即为该阶段的最终解。
-    GpResult run(GpStage stage);
+    GpResult run(GpStage stage, GpRunOptions options = {});
 
     /// 逐迭代回调，用于出图等旁路观测。
     ///

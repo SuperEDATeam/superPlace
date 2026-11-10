@@ -125,6 +125,38 @@ add_executable(superplace-mlg-replay tools/mlg_replay/main.cpp)
 target_link_libraries(superplace-mlg-replay PRIVATE superplace)
 target_compile_options(superplace-mlg-replay PRIVATE -Wall -Wextra)
 
+add_executable(superplace-cgp-ablation tools/cgp_ablation/main.cpp)
+target_link_libraries(superplace-cgp-ablation PRIVATE superplace)
+target_compile_options(superplace-cgp-ablation PRIVATE -Wall -Wextra)
+
+# Optional diagnostic only: compile the pinned, unmodified macro legalizer
+# under a distinct symbol. The production library/CLI is unchanged.
+option(ENABLE_M3_PAIR "Build same-memory baseline/candidate M3 diagnostic" OFF)
+set(M3_REFERENCE_COMMIT "06f7fc8" CACHE STRING "Pinned M3 reference source revision")
+if(ENABLE_M3_PAIR)
+  find_package(Git REQUIRED)
+  execute_process(COMMAND ${GIT_EXECUTABLE} show ${M3_REFERENCE_COMMIT}:src/lg/macro_sa.cpp
+                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                  OUTPUT_VARIABLE M3_REFERENCE_TEXT RESULT_VARIABLE M3_REFERENCE_RC)
+  if(NOT M3_REFERENCE_RC EQUAL 0)
+    message(FATAL_ERROR "Cannot read pinned M3 macro reference ${M3_REFERENCE_COMMIT}")
+  endif()
+  string(FIND "${M3_REFERENCE_TEXT}" "MacroSaResult legalizeMacros(" M3_REFERENCE_SYMBOL)
+  if(M3_REFERENCE_SYMBOL EQUAL -1)
+    message(FATAL_ERROR "Unexpected reference legalizer source")
+  endif()
+  string(REPLACE "MacroSaResult legalizeMacros(" "MacroSaResult legalizeMacrosReference("
+         M3_REFERENCE_TEXT "${M3_REFERENCE_TEXT}")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/m3_reference.cpp "${M3_REFERENCE_TEXT}")
+  add_executable(superplace-m3-pair tools/m3_pair/main.cpp
+                 ${CMAKE_CURRENT_BINARY_DIR}/m3_reference.cpp)
+  target_link_libraries(superplace-m3-pair PRIVATE superplace)
+  target_compile_options(superplace-m3-pair PRIVATE -Wall -Wextra -funroll-loops)
+  if(ENABLE_NATIVE)
+    target_compile_options(superplace-m3-pair PRIVATE -march=native)
+  endif()
+endif()
+
 # ------------------------------------------------------------------------ tests
 enable_testing()
 add_subdirectory(test)

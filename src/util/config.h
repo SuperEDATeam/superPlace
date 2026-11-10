@@ -75,7 +75,7 @@ struct Config {
     // ------------------------------------------------------ 全局布局（M3）
     float target_density    = 1.0f;
     float target_overflow   = 0.10f;   ///< mGP 停止阈值 τ
-    float cgp_target_overflow = 0.07f; ///< cGP 停止阈值（比 mGP 更严）
+    float cgp_target_overflow = 0.10f; ///< M3 验收：与 mGP 同为 0.10；旧黄金显式用 0.07
     /// 停滞保护会让停滞的设计提前收手，上限只约束仍在稳步下降的设计。
     /// 官方 MMS bigblue4 的 λ 前 250 轮几乎不涨，1000 轮时 τ 还在 0.27 往下走，第 1254 轮达标。
     int   gp_max_iter       = 2000;
@@ -96,6 +96,9 @@ struct Config {
     std::string poisson_backend = "cpu";
     /// λ 调度的 ΔHPWL 参考尺度（05 §5.5.9）
     float delta_hpwl_ref    = 3.5e5f;
+    /// fixed 保留历史轨迹；relative 使用阶段初始 HPWL × delta_hpwl_relative。
+    std::string lambda_schedule = "fixed";
+    double delta_hpwl_relative = 0.01;
     /// Nesterov 是否启用 Barzilai-Borwein 步长
     bool  use_bb            = true;
     /// Nesterov 每步试走后校验步长，超过目的点的 1/L 就退回重走

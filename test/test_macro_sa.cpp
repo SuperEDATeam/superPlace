@@ -264,7 +264,7 @@ void testEscapeBlockageArray() {
     // ISPD bigblue3 的缩微版：504×216 的宏困在固定阻挡阵列里，通道只有 144 宽。
     // 这里是 200×80 的宏，阻挡 140×140、间距 200（通道 60），10×10 铺满 [530,2470]²。
     // 宏比通道宽也比通道高，阵列内任何位置都至少压着 140×20；最近的零重叠落点
-    // 在阵列左右边缘外，要平移 1100，网格搜索（步长 50）的窗口到第 6 轮才够得着。
+    // 接触候选可在阵列上下边缘外找到平移 1010 的解；旧网格取到平移 1100 的解。
     // 修复段若"一轮无进展即退出"，第一轮小窗口一无所获就收手，残留 2800。
     std::vector<NodeSpec> specs;
     specs.push_back({1500.f, 1500.f, 200.f, 80.f, sp::F_MACRO});
@@ -284,9 +284,33 @@ void testEscapeBlockageArray() {
                 r.overlapAfter, disp);
     CHECK_TRUE(r.overlapBefore > 0.0);
     CHECK_NEAR(r.overlapAfter, 0.0, 1e-6);
+    CHECK_NEAR(disp, 1010.0, 1e-3);  // Removing contact candidates restores 1100.
 }
 
 // --------------------------------------------- 大宏只需小推移（台账 L10）
+void testSeparationTiePrefersSmallDisplacement() {
+    int exercised = 0;
+    for (int seed : {1002, 1, 2, 3, 4}) {
+        const std::vector<NodeSpec> specs{
+            {5000.f, 5000.f, 2000.f, 1000.f, sp::F_MACRO},
+            {5000.f, 5990.f, 2000.f, 1000.f, sp::F_FIXED}};
+        auto db = makeDb(10000.f, 10.f, specs, {});
+        auto cfg = makeCfg();
+        cfg.random_seed = seed;
+        cfg.macro_sa_moves = 1;
+        sp::MetricsSink sink;
+        const auto r = sp::legalizeMacros(db, cfg, sink);
+        CHECK_NEAR(r.overlapAfter, 0.0, 1e-6);
+        if (r.overlapAfterSa > 0.0) {
+            ++exercised;
+            const double d = std::hypot(double(db.node_x[0] - 5000.f),
+                                        double(db.node_y[0] - 5000.f));
+            CHECK_TRUE(d <= 10.0 + 1e-3);
+        }
+    }
+    CHECK_TRUE(exercised > 0);
+}
+
 void testLargeMacroSmallShift() {
     // 官方 MMS newblue7 的缩微版：长边近 7000 的宏只差几十个单位就能解开，却被网格
     // 搜索（候选步长是宏尺寸的 1/4）一步跳出 20135。这里三个 2000×1000 的宏首尾相接
@@ -355,6 +379,7 @@ int main() {
     testPushChain();
     testEscapeBlockageArray();
     testLargeMacroSmallShift();
+    testSeparationTiePrefersSmallDisplacement();
     testDeterminism();
     return sptest::summary("test_macro_sa");
 }

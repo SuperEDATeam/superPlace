@@ -1,0 +1,7 @@
+{
+  "target_density": 1.0,
+  "target_overflow": 0.1,
+  "cgp_target_overflow": 0.1,
+  "poisson_backend": "cpu",
+  "plot": false
+}

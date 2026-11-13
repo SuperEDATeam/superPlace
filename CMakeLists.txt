@@ -65,6 +65,8 @@ set(SUPERPLACE_SOURCES
     src/gp/filler.cpp
     src/gp/eplace.cpp
     src/lg/macro_sa.cpp
+    src/lg/abacus.cpp
+    src/stages/lg_stage.cpp
     src/gp/wa_wirelength.cpp
     src/init/initial_placer.cpp
     src/init/random_placer.cpp

@@ -76,6 +76,8 @@ public:
     float urx(int i) const { return node_x[i] + 0.5f * node_w[i]; }
     float ury(int i) const { return node_y[i] + 0.5f * node_h[i]; }
     Rect  box(int i) const { return {llx(i), lly(i), urx(i), ury(i)}; }
+    void setLlx(int i, float v) { node_x[i] = v + 0.5f * node_w[i]; }
+    void setLly(int i, float v) { node_y[i] = v + 0.5f * node_h[i]; }
     double area(int i) const {
         return static_cast<double>(node_w[i]) * static_cast<double>(node_h[i]);
     }

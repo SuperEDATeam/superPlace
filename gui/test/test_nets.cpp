@@ -122,4 +122,22 @@ void testNets() {
         CHECK_TRUE(off != nullptr);
         CHECK_TRUE((*off)[0]==1.f && (*off)[1]==2.f);
     }
+    // 4) T26：同一 net 上的多个引脚去重成一行，×N 记该单元在该 net 上的引脚数。
+    {
+        NetList nl;
+        nl.netCount = 2;
+        nl.pinCount = 3;
+        nl.hasNames = true;
+        nl.netNames = {"n71", "other"};
+        nl.netStart = {0, 2, 3};          // net0 度 2，net1 度 1
+        nl.nodePinStart = {0, 3};         // node0 挂 pin0/pin1/pin2
+        nl.nodePins = {0, 1, 2};
+        nl.pinNet = {0, 0, 1};            // pin0/pin1 都在 net0，pin2 在 net1
+        const auto refs = nl.netsOfNode(0);
+        CHECK_EQ(refs.size(), static_cast<size_t>(2));
+        CHECK_EQ(refs[0].net, 0);
+        CHECK_EQ(refs[0].pinCount, 2);    // n71 这一行只出现一次，×2
+        CHECK_EQ(refs[1].net, 1);
+        CHECK_EQ(refs[1].pinCount, 1);
+    }
 }

@@ -94,6 +94,7 @@ add_library(viz_core STATIC
   src/viz/nets.cpp
   src/viz/frame_map.cpp
   src/viz/playback.cpp
+  src/viz/gds_writer.cpp
   src/render/gl_loader.cpp
   src/render/canvas.cpp
   src/app.cpp
@@ -123,6 +124,7 @@ add_executable(viz_tests
   test/test_density_cache.cpp
   test/test_nets.cpp
   test/test_displacement.cpp
+  test/test_gds.cpp
   src/viz/bundle_source.cpp
   src/viz/summary.cpp
   src/viz/spatial_index.cpp
@@ -131,6 +133,7 @@ add_executable(viz_tests
   src/viz/nets.cpp
   src/viz/frame_map.cpp
   src/viz/playback.cpp
+  src/viz/gds_writer.cpp
 )
 target_include_directories(viz_tests PRIVATE src)
 target_include_directories(viz_tests SYSTEM PRIVATE ${VIZ_JSON_INC})

@@ -1,11 +1,12 @@
-// superplace-viz —— 独立布局查看器。
+// superplace-viz —— SuperPlace GUI 布局查看器。
 //
 // 这个可执行文件**不链接 libsuperplace**，也不需要 FFTW / Eigen / libpng / OpenMP。
 // 它唯一认识的东西是 viz bundle 目录格式。
 //
 //     ./superplace-viz [bundle 目录]
 //
-// 不给参数时默认加载仓库自带的合成样本。
+// 不给参数时进入空白状态（在右侧「数据源」下拉框里选设计）；
+// 直接给 bundle 目录则跳过空白状态立即打开。
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,15 +16,16 @@
 
 int main(int argc, char** argv) {
     viz::AppOptions opt;
-    opt.initialBundle = "sample-data/synthetic";
+    // 不带参数：空白启动（T31）。bundle 直开只走位置参数。
+    opt.initialBundle.clear();
 
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "-h" || a == "--help") {
             std::printf(
-                "superplace-viz —— superPlace 布局查看器\n\n"
+                "SuperPlace GUI —— superplace-viz 布局查看器\n\n"
                 "用法: superplace-viz [bundle 目录] [--no-vsync]\n"
-                "          [--width W] [--height H]\n"
+                "          [--width W] [--height H] [--ui-scale S]\n"
                 "          [--frame N] [--bench N] [--bench-ui N] [--bench-csv FILE]\n"
                 "          [--zoom F] [--center X Y] [--paused] [--no-cull]\n"
                 "          [--screenshot out.ppm] [--shot-after 秒]\n\n"
@@ -37,6 +39,11 @@ int main(int argc, char** argv) {
         }
         if (a == "--width" && i + 1 < argc) { opt.width = std::atoi(argv[++i]); continue; }
         if (a == "--height" && i + 1 < argc) { opt.height = std::atoi(argv[++i]); continue; }
+        if (a == "--ui-scale" && i + 1 < argc) {
+            opt.uiScale = std::atof(argv[++i]);
+            if (opt.uiScale <= 0.0) opt.uiScale = 1.5;
+            continue;
+        }
         if (a == "--bench" && i + 1 < argc) {
             opt.benchFrames = std::atoi(argv[++i]);
             continue;

@@ -109,9 +109,10 @@ std::string writeGdsFile(const std::string& outPath, const std::string& designNa
     appendBe16(ver, 600);
     writeRecord(out, 0x00, 0x02, ver.data(), ver.size());
 
-    // BGNLIB：最后修改 / 访问时间各 6 个 int16（年,月,日,时,分,秒），写零。
-    const uint8_t time12[12] = {0};
-    writeRecord(out, 0x01, 0x02, time12, sizeof(time12));
+    // BGNLIB：最后修改 / 访问时间各 6 个 int16（年,月,日,时,分,秒），
+    // 共两组 24 字节，写零；记录总长 = 4 + 24 = 28。
+    const uint8_t time24[24] = {0};
+    writeRecord(out, 0x01, 0x02, time24, sizeof(time24));
 
     writeStringRecord(out, 0x02, designName);   // LIBNAME
 
@@ -123,7 +124,7 @@ std::string writeGdsFile(const std::string& outPath, const std::string& designNa
     std::memcpy(units + 8, u2.data(), 8);
     writeRecord(out, 0x03, 0x05, units, sizeof(units));
 
-    writeRecord(out, 0x06, 0x02, time12, sizeof(time12));   // BGNSTR
+    writeRecord(out, 0x06, 0x02, time24, sizeof(time24));   // BGNSTR
     writeStringRecord(out, 0x07, designName);               // STRNAME
 
     auto writeRect = [&](int32_t x0, int32_t y0, int32_t x1, int32_t y1, int layer) {

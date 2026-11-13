@@ -218,13 +218,16 @@ private:
     int dataSourceIndex_ = -1;
 
     // ---- T30：底部标签页切换（place 开始切终端，完成切回收敛曲线）
-    std::string focusTab_;
+    // 首帧强制激活「收敛曲线」；无 ini 全新启动时默认页不再是终端。
+    std::string focusTab_ = "收敛曲线";
 
     // ---- T33：终端与现场布局子进程
     char terminalInput_[256] = {0};
     std::vector<std::string> terminalLines_;
     pid_t placePid_ = -1;
     bool placeRunning_ = false;
+    bool placeStopping_ = false;        ///< 已发 SIGTERM，等待子进程退出/兜底升级
+    double placeStopSec_ = 0.0;         ///< 发 SIGTERM 的时刻（用于 3s 后升级 SIGKILL）
     std::string placeStage_;          ///< 上次上报的阶段（仅切换时打一行）
     int placeIter_ = -1;              ///< 常驻状态行显示的阶段内轮号
     double placeStartSec_ = 0.0;       ///< 布局启动时刻（glfwGetTime）

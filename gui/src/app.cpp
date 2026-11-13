@@ -1774,7 +1774,8 @@ void App::drawMetricsPanel() {
             ImPlot::PlotLine(label, &xs_[static_cast<size_t>(segStart)],
                              m->values[static_cast<size_t>(ch)].data() + segStart,
                              r - segStart,
-                             {ImPlotProp_LineColor, col, ImPlotProp_LineWeight, 2.0f});
+                             {ImPlotProp_LineColor, col,
+                              ImPlotProp_LineWeight, 2.0f * uiScale_});
             segStart = r;
         }
         if (co >= 0) {
@@ -2029,11 +2030,12 @@ void App::startPlace() {
 
 void App::stopPlace(bool report) {
     if (placePid_ != -1) {
+        // 对真实子进程 pid 发 SIGTERM；不在此回收/清 pid，交给 pollPlace
+        // 等待退出并在 3 秒仍存活时兜底升级 SIGKILL。
         kill(placePid_, SIGTERM);
-        waitpid(placePid_, nullptr, WNOHANG);
-        placePid_ = -1;
+        placeStopping_ = true;
+        placeStopSec_ = glfwGetTime();
     }
-    placeRunning_ = false;
     if (report) terminalLines_.push_back("已取消");
 }
 
@@ -2074,13 +2076,23 @@ void App::pollPlace() {
         placeIter_ = iter;
     }
 
+    // 已请求停止：SIGTERM 后 3 秒仍存活则兜底 SIGKILL（演示兜底策略，见报告）。
+    if (placeStopping_ && placePid_ != -1 && now - placeStopSec_ > 3.0) {
+        if (kill(placePid_, 0) == 0) kill(placePid_, SIGKILL);
+    }
+
     int status = 0;
     const pid_t r = waitpid(placePid_, &status, WNOHANG);
     if (r != placePid_) return;   // 仍在运行
 
+    const bool cancelled = placeStopping_;
     placeRunning_ = false;
+    placeStopping_ = false;
     placePid_ = -1;
     const int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+
+    // 主动取消：不打「失败」行，也不自动加载半成品 bundle。
+    if (cancelled) return;
 
     if (exitCode == 0 && hasSummary) {
         double hpwl = 0.0, overflow = 0.0;
@@ -2127,9 +2139,14 @@ void App::drawTerminalPanel() {
 
     if (placeRunning_) {
         const double el = glfwGetTime() - placeStartSec_;
-        ImGui::TextDisabled("%s 第 %d 轮，已用 %s",
-                            placeStage_.empty() ? "init" : placeStage_.c_str(),
-                            placeIter_, formatElapsed(el).c_str());
+        const char* stageName = placeStage_.empty() ? "init" : placeStage_.c_str();
+        // iter<0（parse/init 等尚未进入带轮号的迭代阶段）不显示「第 N 轮」，
+        // 只报阶段态：「init 中，已用 xx」。
+        if (placeIter_ >= 0)
+            ImGui::TextDisabled("%s 第 %d 轮，已用 %s",
+                                 stageName, placeIter_, formatElapsed(el).c_str());
+        else
+            ImGui::TextDisabled("%s 中，已用 %s", stageName, formatElapsed(el).c_str());
     }
 
     if (ImGui::InputText("##terminal", terminalInput_, sizeof(terminalInput_),

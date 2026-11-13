@@ -10,6 +10,7 @@
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include <sys/types.h>
 
 #include "render/canvas.h"
 #include "viz/density.h"
@@ -26,6 +27,7 @@ namespace viz {
 struct AppOptions {
     std::string initialBundle;     ///< 启动时加载哪个 bundle（可空）
     int  width = 1600, height = 980;
+    double uiScale = 1.5;          ///< T36 界面缩放系数 S（--ui-scale 可覆盖）
     bool vsync = true;
     /// >0 时进入基准模式：渲染这么多帧、报告耗时、退出，不进交互循环。
     /// 既用于量化回归，也让"33 万单元够不够快"这种问题有实测答案而不是猜。
@@ -68,7 +70,20 @@ private:
     void drawSidebar();
     void drawMetricsPanel();
     void drawInspectPanel();
+    void drawTerminalPanel();
     void drawComparePanel();
+
+    // T32：按固定选项打开 bundle；dir 为空时清空回空白状态。
+    void openBundle(const std::string& dir);
+    // T33：现场布局子进程生命周期。
+    void startPlace();
+    void stopPlace(bool report);
+    void pollPlace();
+    void handleTerminalCommand(const std::string& cmd);
+    // T34：把当前显示帧导出 GDSII 到固定路径。
+    void exportGds();
+    // 仓库根目录：可执行文件在 <ROOT>/gui/build/ 下，向上两级推出。
+    static std::string repoRoot();
     void gotoFrame(int index);
     void gotoKeyframe(int index);
     void syncPlayback();
@@ -188,6 +203,33 @@ private:
     std::vector<float> dispValues_;
     std::vector<float> netCountValues_;
     std::vector<float> densityScratch_;   ///< T6 着色复用缓冲，避免每帧堆分配
+
+    // ---- T36：界面缩放（画布文字仍固定 17px，见 drawCanvasPanel）
+    float uiScale_ = 1.f;
+
+    // ---- T32：写死的数据源选项
+    struct DataSourceEntry {
+        std::string label;
+        std::string dir;
+        bool canPlace = false;
+        bool exists = false;
+    };
+    std::vector<DataSourceEntry> dataSources_;
+    int dataSourceIndex_ = -1;
+
+    // ---- T30：底部标签页切换（place 开始切终端，完成切回收敛曲线）
+    std::string focusTab_;
+
+    // ---- T33：终端与现场布局子进程
+    char terminalInput_[256] = {0};
+    std::vector<std::string> terminalLines_;
+    pid_t placePid_ = -1;
+    bool placeRunning_ = false;
+    std::string placeStage_;          ///< 上次上报的阶段（仅切换时打一行）
+    int placeIter_ = -1;              ///< 常驻状态行显示的阶段内轮号
+    double placeStartSec_ = 0.0;       ///< 布局启动时刻（glfwGetTime）
+    double placeLastPoll_ = 0.0;       ///< 上次轮询 scene.json 的时刻
+    std::string placeTargetDir_;       ///< 完成后自动加载的 bundle 目录
 };
 
 }  // namespace viz

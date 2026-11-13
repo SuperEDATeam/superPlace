@@ -166,6 +166,16 @@ int main() {
         try { sp::legalizeCells(db); } catch (const std::invalid_argument&) { rejected = true; }
         CHECK_TRUE(rejected); equalPositions(before, db);
     }
+    {
+        auto db = fixture(1);
+        cell(db, 10.f, 0.f, 4.f); cell(db, 10.f, 0.f, 2.f); db.numMovable = 2;
+        auto unit = db;
+        sp::legalizeCells(unit);
+        sp::AbacusOptions area; area.areaWeight = true;
+        CHECK_EQ(sp::legalizeCells(db, area).failed, 0);
+        CHECK_EQ(unit.llx(0), 8.f); CHECK_EQ(db.llx(0), 9.f);
+        CHECK_EQ(db.llx(1), 13.f); validate(db);
+    }
     std::mt19937 rng(1234);
     for (int trial = 0; trial < 100; ++trial) {
         auto db = fixture(5, 80);
@@ -177,6 +187,7 @@ int main() {
         db.numMovable = 40;
         cell(db, 30.f, 2.f, 10.f, sp::F_FIXED, 4.f);
         auto reference = db, repeat = db;
+        auto areaFast = db, areaSlow = db;
         const auto r = sp::legalizeCells(db);
         sp::AbacusOptions opts; opts.referenceTrials = true;
         const auto rr = sp::legalizeCells(reference, opts);
@@ -185,6 +196,12 @@ int main() {
         equalPositions(db, reference); equalPositions(db, repeat);
         CHECK_EQ(r.selfcheckOverlaps, 0); CHECK_EQ(r.selfcheckOffSite, 0);
         validate(db);
+        sp::AbacusOptions area; area.areaWeight = true;
+        CHECK_EQ(sp::legalizeCells(areaFast, area).failed, 0);
+        area.referenceTrials = true;
+        CHECK_EQ(sp::legalizeCells(areaSlow, area).failed, 0);
+        equalPositions(areaFast, areaSlow);
+        validate(areaFast);
     }
     return sptest::summary("test_abacus");
 }

@@ -15,6 +15,7 @@ struct AbacusSegment {
 struct AbacusOptions {
     // Full-state trials are an intentionally slow oracle for small tests.
     bool referenceTrials = false;
+    bool areaWeight = false;
 };
 
 struct AbacusResult {

@@ -40,11 +40,11 @@ void collapsePosition(Cluster& c, const AbacusSegment& s) {
     c.x = std::clamp(c.q / c.e, static_cast<double>(s.lx), static_cast<double>(s.hx) - c.w);
 }
 
-void addCell(Cluster& c, int slot, double desired, double width) {
+void addCell(Cluster& c, int slot, double desired, double width, double weight) {
     // Abacus (ISPD 2008), Algorithm 2 / Eq. (4): offsets are relative to cluster start.
     c.last = slot;
-    c.e += 1.0;
-    c.q += desired - c.w;
+    c.e += weight;
+    c.q += weight * (desired - c.w);
     c.w += width;
 }
 
@@ -59,7 +59,7 @@ Cluster mergeClusters(const Cluster& left, const Cluster& right) {
 
 // The only changed state is the new tail and the predecessor suffix it absorbs.
 // Trials never mutate a real segment; copying the full row here is quadratic.
-Cluster trialTail(const SegmentState& state, double desired, double width, int& prefix) {
+Cluster trialTail(const SegmentState& state, double desired, double width, double weight, int& prefix) {
     prefix = static_cast<int>(state.clusters.size());
     Cluster tail;
     const int slot = static_cast<int>(state.cells.size());
@@ -69,7 +69,7 @@ Cluster trialTail(const SegmentState& state, double desired, double width, int& 
     } else {
         tail.first = slot;
     }
-    addCell(tail, slot, desired, width);
+    addCell(tail, slot, desired, width, weight);
     collapsePosition(tail, state.segment);
     while (prefix && state.clusters[prefix - 1].x + state.clusters[prefix - 1].w > tail.x) {
         tail = mergeClusters(state.clusters[--prefix], tail);
@@ -80,13 +80,13 @@ Cluster trialTail(const SegmentState& state, double desired, double width, int& 
 
 // A separate full-state mutation path is retained as a test oracle.
 void appendReference(std::vector<Cluster>& clusters, int slot, double desired, double width,
-                     const AbacusSegment& segment) {
+                     double weight, const AbacusSegment& segment) {
     if (clusters.empty() || clusters.back().x + clusters.back().w <= desired) {
         Cluster fresh;
         fresh.first = slot;
         clusters.push_back(fresh);
     }
-    addCell(clusters.back(), slot, desired, width);
+    addCell(clusters.back(), slot, desired, width, weight);
     collapsePosition(clusters.back(), segment);
     while (clusters.size() > 1) {
         const int last = static_cast<int>(clusters.size()) - 1;
@@ -97,9 +97,9 @@ void appendReference(std::vector<Cluster>& clusters, int slot, double desired, d
     }
 }
 
-Cluster referenceTrial(const SegmentState& state, double desired, double width) {
+Cluster referenceTrial(const SegmentState& state, double desired, double width, double weight) {
     std::vector<Cluster> clusters = state.clusters;
-    appendReference(clusters, static_cast<int>(state.cells.size()), desired, width, state.segment);
+    appendReference(clusters, static_cast<int>(state.cells.size()), desired, width, weight, state.segment);
     return clusters.back();
 }
 
@@ -195,6 +195,7 @@ AbacusResult legalizeCells(PlaceDB& db, const AbacusOptions& options) {
     const float* heights = db.node_h.data();
     for (int i : order) {
         const double desiredX = originalX[i], desiredY = originalY[i];
+        const double weight = options.areaWeight ? static_cast<double>(widths[i]) * heights[i] : 1.0;
         int best = -1;
         double bestCost = std::numeric_limits<double>::infinity();
         auto aboveIt = std::lower_bound(rowOrder.begin(), rowOrder.end(), desiredY,
@@ -223,8 +224,8 @@ AbacusResult legalizeCells(PlaceDB& db, const AbacusOptions& options) {
             }
             if (candidate < 0) continue;
             int prefix;
-            const Cluster tail = options.referenceTrials ? referenceTrial(states[candidate], desiredX, width)
-                                                         : trialTail(states[candidate], desiredX, width, prefix);
+            const Cluster tail = options.referenceTrials ? referenceTrial(states[candidate], desiredX, width, weight)
+                                                         : trialTail(states[candidate], desiredX, width, weight, prefix);
             const double dx = tail.x + tail.w - width - desiredX;
             const double cost = dx * dx + distance * distance;
             if (cost < bestCost) { bestCost = cost; best = candidate; }
@@ -235,10 +236,10 @@ AbacusResult legalizeCells(PlaceDB& db, const AbacusOptions& options) {
         const double width = siteWidth(widths[i], static_cast<float>(step));
         if (std::abs(width - widths[i]) > 1e-5) ++result.roundedWidths;
         if (options.referenceTrials) {
-            appendReference(state.clusters, static_cast<int>(state.cells.size()), desiredX, width, state.segment);
+            appendReference(state.clusters, static_cast<int>(state.cells.size()), desiredX, width, weight, state.segment);
         } else {
             int prefix;
-            const Cluster tail = trialTail(state, desiredX, width, prefix);
+            const Cluster tail = trialTail(state, desiredX, width, weight, prefix);
             state.clusters.resize(prefix);
             state.clusters.push_back(tail);
         }

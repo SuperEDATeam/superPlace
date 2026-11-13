@@ -117,6 +117,9 @@ void Config::loadJson(const std::string& path) {
     get("init_method", init_method);
     get("cluster_target_count", cluster_target_count);
     get("density_stat_dim", density_stat_dim);
+    get("lg_cell_weight", lg_cell_weight);
+    if (lg_cell_weight != "unit" && lg_cell_weight != "area")
+        throw std::runtime_error("lg_cell_weight must be unit or area");
     if (j.contains("stages")) stages = j.at("stages").get<std::vector<std::string>>();
     if (j.contains("aux_path") && aux_path.empty()) aux_path = j.at("aux_path").get<std::string>();
 }

@@ -2,13 +2,14 @@
 
 #include "db/hpwl.h"
 #include "lg/abacus.h"
+#include "util/config.h"
 #include "util/logger.h"
 #include "util/metrics.h"
 #include "util/timer.h"
 
 namespace sp {
 
-void LegalizeStage::run(PlaceDB& db, const Config&, MetricsSink& sink) {
+void LegalizeStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
     for (int i = 0; i < db.numMovable; ++i) {
         if (db.isMacro(i) && !db.isFixed(i)) {
             SP_ERROR("lg 需要在 gp 之后运行（宏尚未合法化）");
@@ -17,7 +18,9 @@ void LegalizeStage::run(PlaceDB& db, const Config&, MetricsSink& sink) {
     }
     Timer timer;
     const double before = computeHPWL(db);
-    const auto result = legalizeCells(db);
+    AbacusOptions options;
+    options.areaWeight = cfg.lg_cell_weight == "area";
+    const auto result = legalizeCells(db, options);
     const double after = computeHPWL(db);
     const double ms = timer.elapsedMs();
     sink.setSummary("lg_hpwl_before", before);

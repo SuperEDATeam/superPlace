@@ -112,6 +112,7 @@ private:
     bool   glReady_ = false;      ///< GL 上下文是否已就绪
     bool   geomUploaded_ = false;
     std::string status_, bundlePath_;
+    std::string gdsExportMsg_;   ///< 最近一次 GDSII 导出结果（按钮正下方自动换行显示）
     char pathBuf_[512] = {0};
 
     // ---- T14：连续回放（控制器 + 插值缓冲 + 持帧）

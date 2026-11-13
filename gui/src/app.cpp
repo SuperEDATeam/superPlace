@@ -1444,6 +1444,8 @@ void App::drawSidebar() {
     ImGui::BeginDisabled(!src_);
     if (ImGui::Button("导出 GDSII")) exportGds();
     ImGui::EndDisabled();
+    // 最近一次导出路径 / 失败原因：按钮正下方自动换行，保证在右栏宽度内可读。
+    if (!gdsExportMsg_.empty()) ImGui::TextWrapped("%s", gdsExportMsg_.c_str());
 
     // 原路径输入框 + 加载按钮保留（开发用）。
     ImGui::SetNextItemWidth(-1);
@@ -2187,7 +2189,9 @@ void App::exportGds() {
     std::string err;
     const std::string written = writeGdsFile(out.string(), design, src_->geometry(),
                                              lastPx_, lastPy_, sc.core, &err);
-    status_ = written.empty() ? "GDSII 导出失败：" + err : "已导出：" + written;
+    const std::string msg = written.empty() ? "导出失败：" + err : "已导出：" + written;
+    status_ = msg;
+    gdsExportMsg_ = msg;
 }
 
 }  // namespace viz

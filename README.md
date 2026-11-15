@@ -17,8 +17,8 @@ ePlace 静电场模型 + Nesterov 加速梯度（全局布局）→ Abacus 合�
 | **M2** | 三种初始布局与对比分析（任务 4） | ✅ 完成 |
 | **M2′** | 泊松求解器（DCT / FFTW） | ✅ 完成 |
 | **M3** | ePlace 全局布局四阶段（任务 5 + 任务 7 宏部分） | ✅ 完成 |
-| M4 | GDSII 分层导出（任务 6） | 未开始 |
-| M5 | Abacus 合法化（任务 7） | 进行中：检查器 `superplace-check` 已完成；合法化器见 [08](work_report/08-M5%20Abacus%20合法化开发任务.md) |
+| M4 | GDSII 分层导出（任务 6） | 进行中：由前端导出当前帧（PR #4）；记录类型代码待修，见 [06 T37](work_report/06-前端开发方案与接口契约.md) |
+| **M5** | Abacus 合法化（任务 7） | ✅ 完成（PR #5）：`--stage ...,lg`，检查器 `superplace-check`；见 [08](work_report/08-M5%20Abacus%20合法化开发任务.md) |
 | M6 | 大规模 benchmark（ISPD2005 全套；MMS 已于 M3 提前引入） | 未开始 |
 | M7 | CUDA 泊松求解器 | 未开始 |
 
@@ -87,8 +87,18 @@ python3 scripts/make_gif.py results/adaptec1
 
 主要参数：`--stage <list>` 选择阶段、`--seed <n>` 随机种子、
 `--threads <n>` 线程数、`--no-plot` 关闭出图、`--full-plot` 逐迭代出图、
-`--frame-stride <n>` 每 n 轮录一帧给前端回放（写到 `results/<benchmark>/viz/`）。
-完整用法 `--help`。
+`--frame-stride <n>` 每 n 轮录一帧给前端回放（写到 `results/<benchmark>/viz/`）、
+`--pl <file>` 用指定的 `.pl` 代替 `.aux` 里的初始位置。完整用法 `--help`。
+
+合法化可以接在全局布局后一次跑完（`--stage parse,init,gp,lg`），也可以对保存下来的 GP 结果单独跑，
+结果逐字节相同：
+
+```bash
+./build/superplace-cli --aux test_data/adaptec1/adaptec1.aux --pl results/adaptec1/adaptec1.gp.pl \
+                       --stage parse,lg --out results/lg-only
+```
+
+（单独跑时 parse 阶段的统计在 `.pl` 载入之后做，GP 已固定的宏会计入固定块，`summary.json` 的 `num_macro` 为 0。）
 
 > 同时跑两个布局任务时请把线程分开（如各加 `--threads 16`）。OpenMP 线程数超过核数时
 > 会在屏障处空转，实测 newblue1 两个任务并发时各自慢了十几倍。
@@ -137,7 +147,8 @@ cd build && ctest --output-on-failure
 | `test_macro_sa` | 宏合法化：零重叠、行对齐、增量线长与全量一致、确定性 |
 | `test_viz_writer` | 前端回放 bundle 写出器：只写真实节点、重复帧跳过、标志位在开跑前取定、网表与引脚偏移更新 |
 | `test_eplace` | mGP 主循环：密度项符号、已达标不动、停滞保护、cGP 宏冻结、确定性 |
-| `check_*`（8 个，`ctest -L check`） | 合法性检查器：手写小设计上的合法布局、重叠、压到固定块、未对齐 site、不在行上、越界、宏未对齐、宏翻转后的 HPWL |
+| `test_abacus` | 单元合法化：与逐一试插的参考实现对拍、行段切分、自检零重叠、确定性 |
+| `check_*` / `cli_pl_*`（10 个，`ctest -L check`） | 合法性检查器：手写小设计上的合法布局、重叠、压到固定块、未对齐 site、不在行上、越界、宏未对齐、宏翻转后的 HPWL；`--pl` 单独合法化后通过检查器、文件不存在时报错 |
 
 ## 目录
 

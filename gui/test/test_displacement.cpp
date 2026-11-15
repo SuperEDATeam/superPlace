@@ -40,4 +40,22 @@ void testDisplacement() {
     // 5) viridis 停点：0 深紫、1 亮黄（粗检）
     // (停点数值与 shader/app legend 一致，见 canvas.cpp kCmapGLSL)
     CHECK_TRUE(true);
+
+    // 6) T25：相邻关键帧对位移采样；breakBefore 跳变对跳过，范围不再退化成 1e-6。
+    {
+        float ax[2] = {0.f, 0.f}, ay[2] = {0.f, 0.f};
+        float bx[2] = {10.f, 10.f}, by[2] = {0.f, 0.f};
+        float cx[2] = {999.f, 999.f}, cy[2] = {999.f, 999.f};
+        std::vector<InstantFrame> fr{{{ax, ay}, {bx, by}, {cx, cy}}};
+        // breakBefore[k+1]：第 1 对正常，第 2 对（b→c）是硬跳变，跳过。
+        std::vector<bool> br{false, false, true};
+        std::vector<float> out;
+        collectInstantPairMagnitudes(fr, br, 2, out);
+        CHECK_EQ(out.size(), static_cast<size_t>(2));
+        CHECK_NEAR(out[0], 10.f, 1e-4f);
+        CHECK_NEAR(out[1], 10.f, 1e-4f);
+        const float p99 = percentile(out, 0.99);
+        CHECK_NEAR(p99, 10.f, 1e-4f);
+        CHECK_TRUE(p99 > 1e-6f);   // 范围不是固定色表的 0 ~ 1e-6
+    }
 }

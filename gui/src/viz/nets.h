@@ -42,6 +42,13 @@ struct NetList {
     // 返回只读引用（同一 f 复用缓存，不每帧拷贝）；失败返回 nullptr。
     const std::vector<float>* pinOffsetForFrame(int f, const std::string& bundleDir) const;
 
+    // T26：一个单元所连的去重 net 列表（按 net 下标升序）。
+    struct NodeNetRef {
+        int net = -1;
+        int pinCount = 0;   // 该单元在这个 net 上的引脚数
+    };
+    std::vector<NodeNetRef> netsOfNode(int node) const;
+
     // 内部缓存
     mutable int cachedFrame_ = -1;
     mutable std::vector<float> cachedOffset_;

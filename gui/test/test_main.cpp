@@ -34,6 +34,7 @@ void testDensityCache();
 void testDensityCacheBudget();
 void testDensityCacheFault();
 void testDensityCacheLifetime();
+void testGds();
 
 int main() {
     testCamera();
@@ -69,6 +70,7 @@ int main() {
     testDensityCacheBudget();
     testDensityCacheFault();
     testDensityCacheLifetime();
+    testGds();
 
     std::printf("viz_tests: %d 项检查, %d 失败\n", ::viztest::checks(),
                 ::viztest::failures());

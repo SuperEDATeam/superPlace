@@ -1,9 +1,11 @@
 #include "viz/nets.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <filesystem>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace viz {
 
@@ -52,6 +54,24 @@ const std::vector<float>* NetList::pinOffsetForFrame(int f,
     }
     cachedFrame_ = f;
     return &cachedOffset_;
+}
+
+std::vector<NetList::NodeNetRef> NetList::netsOfNode(int node) const {
+    std::vector<NodeNetRef> out;
+    if (node < 0 || node + 1 >= static_cast<int>(nodePinStart.size())) return out;
+    std::unordered_map<int, int> count;
+    const int p0 = nodePinStart[node], p1 = nodePinStart[node + 1];
+    for (int pi = p0; pi < p1; ++pi) {
+        const int pin = nodePins[pi];
+        if (pin < 0 || pin >= static_cast<int>(pinNet.size())) continue;
+        const int net = pinNet[pin];
+        if (net < 0) continue;
+        ++count[net];
+    }
+    for (const auto& [net, n] : count) out.push_back({net, n});
+    std::sort(out.begin(), out.end(),
+              [](const NodeNetRef& a, const NodeNetRef& b) { return a.net < b.net; });
+    return out;
 }
 
 }  // namespace viz

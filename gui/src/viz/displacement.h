@@ -64,4 +64,30 @@ inline float percentile(std::vector<float> v, double p) {
     return v[idx];
 }
 
+// T25：瞬时运动固定色表范围用的相邻关键帧对位移采样。
+//
+// 遍历相邻关键帧对 (k, k+1)：下一帧 breakBefore 表示硬跳变，这一对跳过；
+// 任一端位置缺失也跳过。否则把每个节点 |pos(k+1)-pos(k)| 追加到 out。
+// 调用方再对 out 取百分位即可。
+struct InstantFrame {
+    const float* x = nullptr;
+    const float* y = nullptr;
+};
+
+inline void collectInstantPairMagnitudes(const std::vector<InstantFrame>& frames,
+                                         const std::vector<bool>& breakBefore,
+                                         int n, std::vector<float>& out) {
+    for (size_t k = 0; k + 1 < frames.size(); ++k) {
+        if (k + 1 < breakBefore.size() && breakBefore[k + 1]) continue;
+        const InstantFrame& a = frames[k];
+        const InstantFrame& b = frames[k + 1];
+        if (!a.x || !a.y || !b.x || !b.y) continue;
+        for (int i = 0; i < n; ++i) {
+            const float dx = b.x[i] - a.x[i];
+            const float dy = b.y[i] - a.y[i];
+            out.push_back(std::sqrt(dx * dx + dy * dy));
+        }
+    }
+}
+
 }  // namespace viz

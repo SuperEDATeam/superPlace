@@ -1,5 +1,6 @@
 #include "lg/macro_sa.h"
 #include "lg/repair_candidates.h"
+#include "util/invariant.h"
 
 #include <algorithm>
 #include <cmath>
@@ -531,6 +532,8 @@ MacroSaResult legalizeMacros(PlaceDB& db, const Config& cfg, MetricsSink& sink) 
     // 那个规模下真要排查，用小用例复现即可。
     if (nM <= 8000) {
         const double dev = om.selfCheck();
+        requireInvariant(std::isfinite(dev) && dev <= 1e-3, "spatial_index", "mLG",
+                         "spatial index disagrees with independent full scan");
         // 面积量级可达 1e8，float 求和的相对误差约 1e-7，放到 1e-3 的绝对容差
         if (dev > 1e-3)
             SP_ERROR("mLG: 空间索引与全扫不一致（最大偏差 %.6g）——重叠会被低估，"

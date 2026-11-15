@@ -1,0 +1,416 @@
+UCLA scl 1.0
+NumRows : 46
+CoreRow Horizontal
+ Coordinate : 0
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 2
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 4
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 6
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 8
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 10
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 12
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 14
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 16
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 18
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 20
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 22
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 24
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 26
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 28
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 30
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 32
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 34
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 36
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 38
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 40
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 42
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 44
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 46
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 48
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 50
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 52
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 54
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 56
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 58
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 60
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 62
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 64
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 66
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 68
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 70
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 72
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 74
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 76
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 78
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 80
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 82
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 84
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 86
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 88
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End
+CoreRow Horizontal
+ Coordinate : 90
+ Height : 2
+ Sitewidth : 1
+ Sitespacing : 1
+ Siteorient : 1
+ Sitesymmetry : 1
+ SubrowOrigin : 0 NumSites : 92
+End

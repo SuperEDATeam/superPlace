@@ -55,15 +55,42 @@ public:
         // ---- 1. 在前瞻点 u_k 处求梯度
         f_(u_.data(), g_.data(), &obj_);
         ++evals_;
-        if (cfg_.backtrack && iter_ > 0) redoIfOvershot(n);
+        bool restarted = false;
+        if (cfg_.adaptive_restart && iter_ > 0) {
+            const double uphill = deterministicSum(n, [&](int64_t i) {
+                return double(g_[i]) * (double(u_[i]) - v_[i]);
+            });
+            const double alignment = cfg_.gradient_restart ? deterministicSum(n, [&](int64_t i) {
+                return double(g_[i]) * gPrevTmp_[i];
+            }) : 0.0;
+            if (uphill > 0.0 || alignment < 0.0) {
+                // Preserve the curvature information BEFORE resetting history.
+                // Otherwise repeated reversals can keep the huge initial step
+                // forever: estimateStep sees dx=dg=0 after a restart.
+                const double dx = l2Diff(u_.data(), uPrev_.data(), n);
+                const double dg = l2Diff(g_.data(), gPrevTmp_.data(), n);
+                if (dx > 0 && dg > 0 && std::isfinite(dx / dg))
+                    alpha_ = std::min(alpha_, static_cast<float>(dx / dg));
+                // The extrapolation points uphill for the CURRENT objective.
+                // Reevaluate at v with current parameters; retaining g(u) here
+                // would repeat the stale evaluation-point failure from G9.
+                u_ = v_;
+                f_(u_.data(), g_.data(), &obj_); ++evals_;
+                uPrev_ = u_; gPrevTmp_ = g_;
+                a_ = 1.f; momentumPrev_ = 0.f; restarted = true;
+                ++restarts_;
+            }
+        }
+        if (cfg_.backtrack && iter_ > 0 && !restarted) redoIfOvershot(n);
         gradNorm_ = static_cast<float>(l2Norm(g_.data(), n));
 
         // ---- 2. 步长：首步用预估值，之后用 Lipschitz 常数的倒数
         alpha_ = (iter_ == 0) ? alpha0_ : estimateStep(n);
+        if (cfg_.step_scale != 1.f) alpha_ *= cfg_.step_scale;
 
         // ---- 3. Nesterov 更新
         const float aNext = 0.5f * (1.f + std::sqrt(4.f * a_ * a_ + 1.f));
-        const float momentum = (a_ - 1.f) / aNext;
+        const float momentum = cfg_.momentum ? (a_ - 1.f) / aNext : 0.f;
 
         vNew_.resize(static_cast<size_t>(n));
         uNew_.resize(static_cast<size_t>(n));
@@ -99,6 +126,7 @@ public:
     float  stepSize() const override { return alpha_; }
     float  gradNorm() const override { return gradNorm_; }
     long   evaluations() const override { return evals_; }
+    long   restarts() const override { return restarts_; }
 
 private:
     /// ePlace 的回溯判据，推迟到下一步开头执行。
@@ -124,6 +152,7 @@ private:
             if (lip > 0.95 * static_cast<double>(alpha_)) return;
 
             alpha_ = static_cast<float>(lip);
+            if (cfg_.step_scale != 1.f) alpha_ *= cfg_.step_scale;
 #pragma omp parallel for schedule(static)
             for (int i = 0; i < n; ++i) {
                 const size_t k = static_cast<size_t>(i);
@@ -224,6 +253,7 @@ private:
     float  gradNorm_ = 0.f;
     double obj_ = 0.0;
     long   evals_ = 0;
+    long   restarts_ = 0;
     int    iter_ = 0;
     bool   inited_ = false;
 };

@@ -36,6 +36,9 @@ def main():
     p.add_argument('--calibration', type=Path, help='MMS adaptec1 diagnostic summary.json')
     p.add_argument('--relative-factor', type=float, choices=[.5, 1., 2.])
     a = p.parse_args()
+    rejection = a.out / 'campaign-rejection.json'
+    if rejection.is_file():
+        raise SystemExit(f'Refusing rejected campaign: {rejection}')
     binary = a.bin.resolve()
     config = json.loads(a.config.read_text())
     if a.relative_factor is not None:
@@ -62,6 +65,10 @@ def main():
                               binary_sha256=digest(binary), config=cfg,
                               aux=str(aux.resolve()), threads=a.threads,
                               machine=os.uname().nodename)
+            source_manifest = binary.parent / 'source-manifest.json'
+            if source_manifest.is_file():
+                provenance['source_manifest'] = str(source_manifest)
+                provenance['source_manifest_sha256'] = digest(source_manifest)
             manifest = run / 'manifest.json'
             done = run / 'completed.json'
             if done.exists():
@@ -83,9 +90,17 @@ def main():
                                         stderr=subprocess.STDOUT,
                                         env=dict(os.environ, OMP_WAIT_POLICY='PASSIVE'))
             status = dict(returncode=result.returncode, wall_s=time.monotonic() - start)
-            if result.returncode == 0 and (run / design / 'summary.json').is_file():
+            summary = run / design / 'summary.json'
+            valid = False
+            if result.returncode == 0 and summary.is_file():
+                try:
+                    valid = json.loads(summary.read_text()).get('run_status') != 'failed'
+                except (ValueError, OSError):
+                    pass
+            if valid:
                 done.write_text(json.dumps(status, indent=2) + '\n')
             else:
+                status['validation_error'] = 'nonzero exit or missing/invalid/failed summary'
                 failures += 1
             print(f'END {item} {status}', flush=True)
     return bool(failures)

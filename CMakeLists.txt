@@ -62,6 +62,7 @@ set(SUPERPLACE_SOURCES
     src/util/config.cpp
     src/util/metrics.cpp
     src/gp/bin_grid.cpp
+    src/gp/diagnostics.cpp
     src/gp/filler.cpp
     src/gp/eplace.cpp
     src/lg/macro_sa.cpp

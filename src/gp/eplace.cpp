@@ -8,6 +8,7 @@
 #include "db/hpwl.h"
 #include "db/place_db.h"
 #include "gp/bin_grid.h"
+#include "gp/diagnostics.h"
 #include "gp/filler.h"
 #include "gp/lambda_schedule.h"
 #include "gp/wa_wirelength.h"
@@ -15,6 +16,7 @@
 #include "numeric/reduction.h"
 #include "util/config.h"
 #include "util/logger.h"
+#include "util/invariant.h"
 #include "util/metrics.h"
 #include "util/timer.h"
 
@@ -135,6 +137,10 @@ struct EPlace::Impl {
         const int n = nOpt();
         const int total = db.totalNodes();
 
+        for (int k = 0; k < 2 * n; ++k)
+            if (!std::isfinite(p[k]))
+                throw InvariantError("non_finite", "GP/evaluate", "non-finite optimizer coordinate");
+
         scatter(p);
         std::copy(p, p + 2 * n, lastEval.begin());
 
@@ -183,6 +189,12 @@ struct EPlace::Impl {
         });
         sumAbsWlGrad = sumWl;
         sumAbsDenForce = sumDen;
+        requireInvariant(std::isfinite(hpwl) && std::isfinite(tau) && std::isfinite(wlObj) &&
+            std::isfinite(sumWl) && std::isfinite(sumDen), "non_finite", "GP/evaluate",
+            "non-finite objective, overflow or force norm");
+        for (int k = 0; k < 2 * n; ++k)
+            if (!std::isfinite(grad[k]))
+                throw InvariantError("non_finite", "GP/evaluate", "non-finite optimizer gradient");
 
         // 报告用的目标值取 WA 线长。密度项的能量 ½Σqφ 与线长不同量纲，
         // 相加得到的数字既不可比也不可解释；Nesterov 的步长只依赖梯度，
@@ -193,6 +205,7 @@ struct EPlace::Impl {
 
 EPlace::EPlace(PlaceDB& db, const Config& cfg, MetricsSink& sink)
     : impl_(std::make_unique<Impl>(db, cfg, sink)) {
+    checkGeometry(db, "GP/initialize", false);
     impl_->grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks,
                            cfg.poisson_backend == "cuda");
     sink.setSummary("poisson_backend", impl_->grid.backendName());
@@ -209,6 +222,8 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
     Impl& s = *impl_;
     PlaceDB& db = s.db;
     const Config& cfg = s.cfg;
+    checkGeometry(db, toString(stage), false);
+    const bool diagnostic = cfg.gp_diagnostics && stage != GpStage::kFillerOnly && !s.sink.outputDir().empty();
 
     s.buildOptSet(stage);
     const int n = s.nOpt();
@@ -263,6 +278,12 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
         result.overflow = s.grid.overflow();
         result.hpwl = computeHPWL(db);
         result.converged = true;
+        checkGeometry(db, toString(stage), true);
+        requireInvariant(result.overflow < targetTau, "convergence_mismatch", toString(stage),
+                         "noop delivered overflow disagrees with convergence");
+        if (diagnostic)
+            diagnoseDelivered(s.sink.outputDir(), toString(stage), -1, s.lambda, s.gamma,
+                              db, cfg, s.grid.dim(), s.optIdx, s.pos);
         s.sink.setSummary(prefix + "evaluations", 0);
         s.sink.setSummary(prefix + "converged", 1);
         s.sink.setSummary(prefix + "stagnated", 0);
@@ -276,6 +297,10 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
     oc.max_iter = maxIter;
     oc.use_bb = cfg.use_bb;
     oc.backtrack = cfg.gp_backtrack;
+    oc.momentum = !options.noMomentum;
+    oc.step_scale = options.stepScale;
+    oc.adaptive_restart = options.adaptiveRestart;
+    oc.gradient_restart = options.gradientRestart;
     auto opt = makeNesterov(
         [&s](const float* p, float* g, double* o) { s.objAndGrad(p, g, o); },
         [&s](float* p) { s.clamp(p); }, oc);
@@ -322,17 +347,24 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
     int    sinceImprove = 0;
     const float minGain = std::clamp(cfg.gp_stagnation_min_gain, 0.f, 0.5f);
     bool   stagnated = false;
+    bool diagnosedMid = false;
+    float lastLambda = s.lambda, lastGamma = s.gamma;
+    std::vector<float> previousEval = diagnostic ? s.pos : std::vector<float>{};
 
     for (int iter = 0; iter < maxIter; ++iter) {
+        if (diagnostic && iter > 0) previousEval = s.lastEval;
         const float evalLambda = s.lambda, evalGamma = s.gamma;
+        lastLambda = evalLambda; lastGamma = evalGamma;
         opt->step(s.pos.data(), 2 * n);
 
         // τ / HPWL 取自本轮最后一次求值的点（Nesterov 的前瞻点 u），这是标准做法：
         // 梯度在哪里求的，指标就在哪里报，二者一致才好判读收敛曲线。
-        if (!std::isfinite(s.hpwl) || !std::isfinite(s.tau)) {
-            SP_ERROR("%s: 第 %d 轮出现 NaN/Inf，中止", toString(stage), iter);
-            break;
-        }
+        requireInvariant(std::isfinite(s.hpwl) && std::isfinite(s.tau) &&
+            std::isfinite(opt->stepSize()), "non_finite", toString(stage), "non-finite iteration metrics");
+        if (diagnostic && iter == 0)
+            writeGpDiagnostic(s.sink.outputDir(), toString(stage), "first_eval", iter,
+                evalLambda, evalGamma, opt->stepSize(), db, cfg, s.grid, s.optIdx,
+                previousEval, s.gradWl, s.force);
 
         // λ 调度（05 §5.5.9）。HPWL 涨得越猛，说明密度压得过狠，μ 越小；
         // HPWL 下降时取上界 1.05，继续加大密度权重把单元铺开。
@@ -344,6 +376,8 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
         havePrev = true;
 
         if (!options.freezeGamma) s.gamma = computeGamma(s.tau, s.grid.stepX());
+        requireInvariant(std::isfinite(s.lambda) && std::isfinite(s.gamma), "non_finite",
+                         toString(stage), "non-finite schedule parameters");
 
         IterMetrics m;
         m.iter = iter;
@@ -390,6 +424,12 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
                 ++sinceImprove;
             }
             bestTau = std::min(bestTau, s.tau);
+            if (diagnostic && !diagnosedMid && sinceImprove >= std::max(1, cfg.gp_stagnation_window / 2)) {
+                writeGpDiagnostic(s.sink.outputDir(), toString(stage), "stagnation_mid", iter,
+                    evalLambda, evalGamma, opt->stepSize(), db, cfg, s.grid, s.optIdx,
+                    previousEval, s.gradWl, s.force);
+                diagnosedMid = true;
+            }
             const float tol = bestTau * (1.f + minGain);
             while (!snaps.empty() && snaps.front().tau > tol) {
                 spare.push_back(std::move(snaps.front().pos));
@@ -431,6 +471,11 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
         }
     }
 
+    if (diagnostic)
+        writeGpDiagnostic(s.sink.outputDir(), toString(stage), "last_eval", result.iterations - 1,
+            lastLambda, lastGamma, opt->stepSize(), db, cfg, s.grid, s.optIdx,
+            previousEval, s.gradWl, s.force);
+
     // 优化器对外暴露的是"当前解" v，而求值点是前瞻点 u；db 里留的是最后一次求值的
     // 工作数据，这里必须把要交付的 s.pos 写回去。s.pos 通常是 v；达标与停滞回退时
     // 是测得该 τ 的 u（取自 lastEval 或其快照）。
@@ -439,7 +484,27 @@ GpResult EPlace::run(GpStage stage, GpRunOptions options) {
     s.grid.accumulate(db);
     result.overflow = s.grid.overflow();
     result.hpwl = computeHPWL(db);
+    checkGeometry(db, toString(stage), true);
+    requireInvariant(std::isfinite(result.hpwl) && std::isfinite(result.overflow), "non_finite",
+                     toString(stage), "non-finite delivered metrics");
+    if (result.converged)
+        requireInvariant(result.overflow < targetTau, "convergence_mismatch", toString(stage),
+                         "delivered overflow disagrees with convergence");
+    const int deliveredIter = result.stagnated ? result.rollbackIter : result.iterations - 1;
+    if (result.stagnated) {
+        const auto& rows = s.sink.stageMetrics(toString(stage));
+        const auto& expected = rows.at(static_cast<size_t>(deliveredIter));
+        requireInvariant(std::fabs(double(result.overflow) - expected.overflow) <=
+            1e-7 + 1e-6 * std::fabs(expected.overflow) &&
+            std::fabs(result.hpwl - expected.hpwl) <= 1e-6 + 1e-10 * std::fabs(expected.hpwl),
+            "rollback_mismatch", toString(stage), "delivered metrics disagree with rollback point");
+        lastLambda = expected.eval_lambda; lastGamma = expected.eval_gamma;
+    }
+    if (diagnostic)
+        diagnoseDelivered(s.sink.outputDir(), toString(stage), deliveredIter, lastLambda, lastGamma,
+                          db, cfg, s.grid.dim(), s.optIdx, s.lastEval);
     result.evaluations = opt->evaluations();
+    s.sink.setSummary(prefix + "restarts", static_cast<double>(opt->restarts()));
     s.sink.setSummary(prefix + "evaluations", static_cast<double>(result.evaluations));
     s.sink.setSummary(prefix + "converged", result.converged ? 1 : 0);
     s.sink.setSummary(prefix + "stagnated", result.stagnated ? 1 : 0);

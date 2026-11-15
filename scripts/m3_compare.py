@@ -18,6 +18,8 @@ def read_run(manifest):
     if not (run / 'completed.json').is_file():
         raise ValueError(f'incomplete: {run}')
     summary = json.loads((run / design / 'summary.json').read_text())
+    if summary.get('run_status') == 'failed':
+        raise ValueError(f'{run}: failed run: {summary.get("failure_message")}')
     log = (run / 'run.log').read_text()
     for key, value in summary.items():
         if isinstance(value, (float, int)) and not math.isfinite(value):
@@ -32,6 +34,8 @@ def main():
     p.add_argument('--identical', action='store_true', help='require bit-identical init/gp PL')
     p.add_argument('--overlap', action='store_true', help='independent geometry check')
     p.add_argument('--expected-count', type=int, default=32, help='required seed-1002 designs')
+    p.add_argument('--changed-stages', nargs='+', choices=['mgp', 'cgp'], default=[],
+                   help='declared algorithm changes; safety and quality checks always remain enabled')
     p.add_argument('--suite-aggregation', choices=['paired-designs', 'default-seed'],
                    default='paired-designs',
                    help='macro designs require seeds 1002,1,2,3,4 before equal-design aggregation')
@@ -65,13 +69,17 @@ def main():
                     raise ValueError(f'{key}={ns[key]}')
             if ns['init_hpwl'] != bs['init_hpwl']:
                 raise ValueError('unchanged QP produced different HPWL')
-            if nm['config'].get('lambda_schedule', 'fixed') == 'fixed':
+            if 'mgp' not in a.changed_stages:
                 for key in ['mgp_hpwl', 'mgp_overflow', 'mgp_iterations']:
                     if key in bs and ns.get(key) != bs[key]:
                         raise ValueError(f'unchanged mGP changed: {key}')
                 for key in ['mlg_macro_disp_mean', 'mlg_macro_disp_max']:
                     if key in bs and ns.get(key, math.inf) > bs[key] * (1.0 + 1e-6) + 1e-7:
                         raise ValueError(f'mLG displacement worsened: {key}')
+            elif 'mgp' in a.changed_stages and 'mlg_macro_disp_mean' in ns:
+                print(f'{rel.parent}: changed mGP input; mLG mean/max '
+                      f'{bs.get("mlg_macro_disp_mean")}/{bs.get("mlg_macro_disp_max")} -> '
+                      f'{ns.get("mlg_macro_disp_mean")}/{ns.get("mlg_macro_disp_max")}')
             for stage in ['mgp', 'cgp']:
                 key = stage + '_overflow'
                 if key in bs and bs[key] < .1 and ns.get(key, math.inf) >= .1:
@@ -87,9 +95,13 @@ def main():
                     if len(rows) != 1 or not math.isclose(float(rows[0]['overflow']), ns[key],
                                                         rel_tol=1e-6, abs_tol=1e-7):
                         raise ValueError(f'{stage}: rollback and delivered overflow disagree')
-            for stage in ['init', 'gp']:
+            check_stages = ['init', 'gp'] if a.identical else ['init']
+            if (('cgp' in a.changed_stages and 'mgp' not in a.changed_stages) or
+                    (a.identical and (b / design / f'{design}.mgp.pl').is_file())):
+                check_stages.append('mgp')
+            for stage in check_stages:
                 left, right = b / design / f'{design}.{stage}.pl', n / design / f'{design}.{stage}.pl'
-                if a.identical and hashlib.sha256(left.read_bytes()).digest() != hashlib.sha256(right.read_bytes()).digest():
+                if hashlib.sha256(left.read_bytes()).digest() != hashlib.sha256(right.read_bytes()).digest():
                     raise ValueError(f'{stage}.pl changed')
             if a.overlap and ns.get('gp_movable_macros', 0):
                 subprocess.run(['python3', 'scripts/check_overlap.py', str(Path(nm['aux']).parent),

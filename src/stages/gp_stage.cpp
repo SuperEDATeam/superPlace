@@ -17,6 +17,7 @@
 #include "plot/cimg_renderer.h"
 #include "util/config.h"
 #include "util/logger.h"
+#include "util/invariant.h"
 #include "util/metrics.h"
 #include "util/timer.h"
 
@@ -56,6 +57,7 @@ int countOutOfCore(const PlaceDB& db) {
 }  // namespace
 
 void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
+    checkGeometry(db, "gp/input", false);
     const double hpwlBefore = computeHPWL(db);
 
     int movableMacros = 0;
@@ -126,6 +128,9 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
 
         // ---- 阶段二：mLG（宏模拟退火合法化，结束后宏被钉死）
         const MacroSaResult mlg = legalizeMacros(db, cfg, sink);
+        requireInvariant(std::isfinite(mlg.overlapAfter) && mlg.overlapAfter <= 0,
+                         "macro_overlap", "mLG", "residual macro overlap after legalization");
+        checkGeometry(db, "mLG", true);
         // mLG 是一次性跳变（SA 没有逐轮回调），宏直接落到合法位置。
         // 标 breakBefore：前端在这里必须硬切，插值会画出宏"滑过去"的假动作。
         sink.markFrame({"mLG", -1, tOffset, true, "mLG 宏合法化（宏跳到合法位置）"});
@@ -213,6 +218,7 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
             ++k;
         }
         sink.setSummary("cgp_macros_moved", moved);
+        requireInvariant(moved == 0, "macro_moved", "cGP", "a frozen macro changed position");
         if (moved > 0)
             SP_ERROR("cGP 期间有 %d 个宏发生位移，它们本应已被钉死", moved);
         else
@@ -221,6 +227,7 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
 
     const double elapsed = timer.elapsedMs();
     const int outOfCore = countOutOfCore(db);
+    checkGeometry(db, "gp/delivered", true);
     if (outOfCore > 0) SP_WARN("gp: %d 个节点越出 coreRegion", outOfCore);
 
     sink.setSummary("gp_hpwl_before", hpwlBefore);

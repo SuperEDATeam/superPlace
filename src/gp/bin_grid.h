@@ -55,6 +55,20 @@ public:
     const std::vector<float>& fillerDensity() const { return fillerDensity_; }
     const std::vector<float>& terminalDensity() const { return terminalDensity_; }
     const std::vector<float>& baseDensity() const { return baseDensity_; }
+    const std::vector<float>& potential() const { return phi_; }
+    const std::vector<float>& fieldX() const { return fieldX_; }
+    const std::vector<float>& fieldY() const { return fieldY_; }
+    float originX() const { return originX_; }
+    float originY() const { return originY_; }
+    float targetDensity() const { return targetDensity_; }
+    double overflowDenominator() const { return movableAreaScaled_; }
+
+    struct Footprint {
+        int bx0, bx1, by0, by1;
+        float lx, ly, hx, hy;
+        float scale;
+    };
+    Footprint diagnosticFootprint(const PlaceDB& db, int i) const { return footprintOf(db, i); }
 
 private:
     int   dim_ = 0;
@@ -83,11 +97,6 @@ private:
     double movableAreaScaled_ = 0.0;
 
     /// 单元覆盖的 bin 区间 + local smoothing 后的矩形与缩放比
-    struct Footprint {
-        int   bx0, bx1, by0, by1;
-        float lx, ly, hx, hy;
-        float scale;
-    };
     Footprint footprintOf(const PlaceDB& db, int i) const;
 
     /// 节点 i 的电荷缩放系数。**这是缩放规则的唯一真源**——

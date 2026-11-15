@@ -1,0 +1,131 @@
+UCLA nets 1.0
+NumNets : 32
+NumPins : 96
+NetDegree : 3 n0
+ c0 I : 0 0
+ m O : 0 0
+ p0 I : 0 0
+NetDegree : 3 n1
+ c1 I : 0 0
+ m O : 0 0
+ p1 I : 0 0
+NetDegree : 3 n2
+ c2 I : 0 0
+ m O : 0 0
+ p2 I : 0 0
+NetDegree : 3 n3
+ c3 I : 0 0
+ m O : 0 0
+ p3 I : 0 0
+NetDegree : 3 n4
+ c4 I : 0 0
+ m O : 0 0
+ p4 I : 0 0
+NetDegree : 3 n5
+ c5 I : 0 0
+ m O : 0 0
+ p5 I : 0 0
+NetDegree : 3 n6
+ c6 I : 0 0
+ m O : 0 0
+ p6 I : 0 0
+NetDegree : 3 n7
+ c7 I : 0 0
+ m O : 0 0
+ p7 I : 0 0
+NetDegree : 3 n8
+ c8 I : 0 0
+ m O : 0 0
+ p8 I : 0 0
+NetDegree : 3 n9
+ c9 I : 0 0
+ m O : 0 0
+ p9 I : 0 0
+NetDegree : 3 n10
+ c10 I : 0 0
+ m O : 0 0
+ p10 I : 0 0
+NetDegree : 3 n11
+ c11 I : 0 0
+ m O : 0 0
+ p11 I : 0 0
+NetDegree : 3 n12
+ c12 I : 0 0
+ m O : 0 0
+ p12 I : 0 0
+NetDegree : 3 n13
+ c13 I : 0 0
+ m O : 0 0
+ p13 I : 0 0
+NetDegree : 3 n14
+ c14 I : 0 0
+ m O : 0 0
+ p14 I : 0 0
+NetDegree : 3 n15
+ c15 I : 0 0
+ m O : 0 0
+ p15 I : 0 0
+NetDegree : 3 n16
+ c16 I : 0 0
+ m O : 0 0
+ p16 I : 0 0
+NetDegree : 3 n17
+ c17 I : 0 0
+ m O : 0 0
+ p17 I : 0 0
+NetDegree : 3 n18
+ c18 I : 0 0
+ m O : 0 0
+ p18 I : 0 0
+NetDegree : 3 n19
+ c19 I : 0 0
+ m O : 0 0
+ p19 I : 0 0
+NetDegree : 3 n20
+ c20 I : 0 0
+ m O : 0 0
+ p20 I : 0 0
+NetDegree : 3 n21
+ c21 I : 0 0
+ m O : 0 0
+ p21 I : 0 0
+NetDegree : 3 n22
+ c22 I : 0 0
+ m O : 0 0
+ p22 I : 0 0
+NetDegree : 3 n23
+ c23 I : 0 0
+ m O : 0 0
+ p23 I : 0 0
+NetDegree : 3 n24
+ c24 I : 0 0
+ m O : 0 0
+ p24 I : 0 0
+NetDegree : 3 n25
+ c25 I : 0 0
+ m O : 0 0
+ p25 I : 0 0
+NetDegree : 3 n26
+ c26 I : 0 0
+ m O : 0 0
+ p26 I : 0 0
+NetDegree : 3 n27
+ c27 I : 0 0
+ m O : 0 0
+ p27 I : 0 0
+NetDegree : 3 n28
+ c28 I : 0 0
+ m O : 0 0
+ p28 I : 0 0
+NetDegree : 3 n29
+ c29 I : 0 0
+ m O : 0 0
+ p29 I : 0 0
+NetDegree : 3 n30
+ c30 I : 0 0
+ m O : 0 0
+ p30 I : 0 0
+NetDegree : 3 n31
+ c31 I : 0 0
+ m O : 0 0
+ p31 I : 0 0

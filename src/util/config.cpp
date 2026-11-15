@@ -54,6 +54,7 @@ std::string Config::usage() {
         "  --frame-stride <n>  Record positions every n GP iterations into a viz bundle\n"
         "                      (<out>/<benchmark>/viz/) for frontend playback (0 = off)\n"
         "  --verbose           Verbose logging\n"
+        "  --gp-diagnostics    Export local GP density/force diagnostics (opt-in)\n"
         "  -h, --help          Show this help\n";
 }
 
@@ -88,6 +89,7 @@ void Config::loadJson(const std::string& path) {
     get("cgp_target_overflow", cgp_target_overflow);
     get("gp_max_iter", gp_max_iter);
     get("gp_bin_dim", gp_bin_dim);
+    get("gp_diagnostics", gp_diagnostics);
     get("density_chunks", density_chunks);
     get("poisson_backend", poisson_backend);
     if (poisson_backend != "cpu" && poisson_backend != "cuda")
@@ -164,6 +166,8 @@ Config Config::fromArgs(int argc, char** argv) {
             cfg.frame_stride = std::stoi(need(i, "--frame-stride")); ++i; cliSet.insert("frame_stride");
         } else if (a == "--verbose") {
             cfg.verbose = true;   cliSet.insert("verbose");
+        } else if (a == "--gp-diagnostics") {
+            cfg.gp_diagnostics = true; cliSet.insert("gp_diagnostics");
         } else {
             throw std::runtime_error("unknown argument: " + a);
         }
@@ -182,6 +186,7 @@ Config Config::fromArgs(int argc, char** argv) {
         if (cliSet.count("full_plot"))    fromFile.full_plot    = cfg.full_plot;
         if (cliSet.count("frame_stride")) fromFile.frame_stride = cfg.frame_stride;
         if (cliSet.count("verbose"))      fromFile.verbose      = cfg.verbose;
+        if (cliSet.count("gp_diagnostics")) fromFile.gp_diagnostics = cfg.gp_diagnostics;
         if (cliSet.count("aux_path"))     fromFile.aux_path     = cfg.aux_path;
         if (cliSet.count("init_method"))  fromFile.init_method  = cfg.init_method;
         cfg = fromFile;

@@ -1,6 +1,7 @@
 #include "util/metrics.h"
 
 #include <cstdio>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -8,6 +9,7 @@
 
 #include "util/logger.h"
 #include "util/timer.h"
+#include "util/invariant.h"
 #include "nlohmann/json.hpp"
 
 namespace fs = std::filesystem;
@@ -26,6 +28,11 @@ void MetricsSink::beginStage(const std::string& stage) {
 }
 
 void MetricsSink::push(const IterMetrics& m) {
+    for (double value : {m.hpwl, double(m.overflow), double(m.lambda), double(m.gamma),
+            double(m.step_size), double(m.grad_norm_wl), double(m.grad_norm_den),
+            double(m.max_displacement), m.elapsed_ms, double(m.eval_lambda), double(m.eval_gamma),
+            m.delta_hpwl, double(m.lambda_mu)})
+        if (!std::isfinite(value)) throw InvariantError("non_finite", "metrics", "non-finite iteration metric");
     if (stage_stack_.empty()) beginStage("unnamed");
     // 定位到栈顶阶段对应的那组。不能直接用 stages_.back()——子阶段结束后它仍是
     // 子阶段那一组，此时外层阶段再 push 会把数据记到已结束的子阶段名下。
@@ -60,6 +67,7 @@ void MetricsSink::recordDuration(const std::string& label, double ms) {
 }
 
 void MetricsSink::setSummary(const std::string& key, double value) {
+    if (!std::isfinite(value)) throw InvariantError("non_finite", "metrics", "non-finite summary: " + key);
     summary_num_[key] = value;
 }
 

@@ -234,6 +234,65 @@ void testBacktrackIsNoopWhenStepIsSafe() {
     CHECK_EQ(a.second, b.second);
 }
 
+// A changing objective reverses the useful direction while old momentum is
+// still present. A restart must evaluate at v using the NEW objective, not
+// reuse g(u) or a gradient from the preceding iteration.
+void testAdaptiveRestartReevaluatesCurrentObjective() {
+    for (bool restart : {false, true}) {
+        Quadratic q{{1.f, .001f}, {0.f, 0.f}};
+        std::vector<std::vector<float>> evaluated;
+        auto fn = [&](const float* x, float* g, double* o) {
+            evaluated.emplace_back(x, x + 2); q(x, g, o);
+        };
+        sp::OptConfig cfg; cfg.init_step = .1f; cfg.use_bb = false;
+        cfg.adaptive_restart = restart;
+        std::vector<float> pos{10.f, 10.f};
+        auto opt = sp::makeNesterov(fn, nullptr, cfg);
+        opt->step(pos.data(), 2); opt->step(pos.data(), 2);
+        const auto previous = pos;
+        q.target[1] = 100.f;
+        evaluated.clear(); const auto before = opt->evaluations();
+        opt->step(pos.data(), 2);
+        CHECK_EQ(evaluated.size(), restart ? 2u : 1u);
+        CHECK_EQ(opt->evaluations() - before, restart ? 2 : 1);
+        if (restart) {
+            CHECK_TRUE(evaluated.back() == previous);
+            float g[2]; double correct;
+            q(previous.data(), g, &correct);
+            CHECK_NEAR(opt->objective(), correct, 1e-12);
+        }
+    }
+}
+
+void testGradientReversalRestart() {
+    for (bool reversal : {false, true}) {
+        Quadratic q{{1.f, .001f}, {0.f, 0.f}};
+        int calls = 0;
+        auto fn = [&](const float* x, float* g, double* o) { ++calls; q(x, g, o); };
+        sp::OptConfig cfg; cfg.init_step = .1f; cfg.adaptive_restart = true;
+        cfg.gradient_restart = reversal;
+        std::vector<float> x{10, 10}; auto opt = sp::makeNesterov(fn, nullptr, cfg);
+        opt->step(x.data(), 2);  // momentum is still zero, so u == v
+        q.target = {100, 100}; calls = 0;
+        opt->step(x.data(), 2);
+        CHECK_EQ(calls, reversal ? 2 : 1);
+        CHECK_EQ(opt->restarts(), reversal ? 1 : 0);
+    }
+}
+
+void testRestartRetainsCurvatureWithHugeInitialStep() {
+    Quadratic q{{4.f}, {3.f}};
+    sp::OptConfig cfg; cfg.init_step = 12.5f;
+    cfg.adaptive_restart = cfg.gradient_restart = true;
+    cfg.backtrack = true;
+    float x = 0;
+    auto opt = sp::makeNesterov(q, nullptr, cfg);
+    for (int k = 0; k < 3; ++k) opt->step(&x, 1);
+    CHECK_TRUE(opt->restarts() > 0);
+    CHECK_TRUE(opt->objective() < 1e-6);
+    CHECK_NEAR(x, 3, 1e-5);
+}
+
 }  // namespace
 
 int main() {
@@ -245,5 +304,8 @@ int main() {
     testBacktrackConverges();
     testBacktrackRecoversFromHugeStep();
     testBacktrackIsNoopWhenStepIsSafe();
+    testAdaptiveRestartReevaluatesCurrentObjective();
+    testGradientReversalRestart();
+    testRestartRetainsCurvatureWithHugeInitialStep();
     return sptest::summary("test_nesterov");
 }

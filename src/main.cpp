@@ -19,6 +19,7 @@
 #include "stage.h"
 #include "util/config.h"
 #include "util/logger.h"
+#include "util/invariant.h"
 #include "util/metrics.h"
 #include "util/timer.h"
 
@@ -41,13 +42,15 @@ int main(int argc, char** argv) {
     if (cfg.num_threads > 0) omp_set_num_threads(cfg.num_threads);
 #endif
 
+    sp::MetricsSink sink;
+    fs::path failureSummary;
     try {
         // ---- 输出目录：<out>/<benchmark>/
         const fs::path outDir = fs::path(cfg.out_dir) / cfg.benchmark_name;
         const fs::path plotDir = outDir / "plots";
         fs::create_directories(plotDir);
 
-        sp::MetricsSink sink;
+        failureSummary = outDir / "summary.json";
         sink.setOutputDir(outDir.string());
         sink.setSummary("benchmark", cfg.benchmark_name);
         sink.setSummary("aux_path", cfg.aux_path);
@@ -65,6 +68,7 @@ int main(int argc, char** argv) {
                 sink.setSummary("pl_path", cfg.pl_path);
                 SP_INFO("placement loaded: %s", cfg.pl_path.c_str());
             }
+            sp::checkGeometry(db, "read", false);
             sink.recordDuration("read", t.elapsedMs());
             SP_INFO("parse done in %.1f ms", t.elapsedMs());
         }
@@ -114,10 +118,22 @@ int main(int argc, char** argv) {
             }
         }
 
+        sink.setSummary("run_status", "completed");
         sink.writeSummary((outDir / "summary.json").string());
         viz.finish(outDir.string());
         SP_INFO("results in %s", outDir.c_str());
     } catch (const std::exception& e) {
+        if (!failureSummary.empty()) {
+            sink.setSummary("run_status", "failed");
+            sink.setSummary("failure_message", e.what());
+            const auto* invariant = dynamic_cast<const sp::InvariantError*>(&e);
+            sink.setSummary("failure_kind", invariant ? invariant->kind : "exception");
+            sink.setSummary("failure_stage", invariant ? invariant->stage : "pipeline");
+            try {
+                sink.endStage(0);
+                sink.writeSummary(failureSummary.string());
+            } catch (...) { /* Preserve the original failure and nonzero exit. */ }
+        }
         std::fprintf(stderr, "error: %s\n", e.what());
         return 1;
     }

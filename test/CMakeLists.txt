@@ -47,12 +47,21 @@ sp_add_test(test_filler)
 sp_add_test(test_macro_sa)
 sp_add_test(test_abacus)
 sp_add_test(test_eplace)
+sp_add_test(test_gp_diagnostics)
 sp_add_test(test_lambda_schedule)
 sp_add_test(test_repair_candidates)
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     add_test(NAME test_m3_audit COMMAND ${Python3_EXECUTABLE}
              ${CMAKE_CURRENT_SOURCE_DIR}/test_m3_audit.py)
+    add_test(NAME test_gp_failure COMMAND ${Python3_EXECUTABLE}
+             ${CMAKE_CURRENT_SOURCE_DIR}/test_gp_failure.py $<TARGET_FILE:superplace-cli>
+             ${CMAKE_CURRENT_SOURCE_DIR}/check)
+    add_test(NAME test_m3_hotspots COMMAND ${Python3_EXECUTABLE}
+             ${CMAKE_CURRENT_SOURCE_DIR}/test_m3_hotspots.py)
+    add_test(NAME test_cgp_convergence COMMAND ${Python3_EXECUTABLE}
+             ${CMAKE_CURRENT_SOURCE_DIR}/test_cgp_convergence.py $<TARGET_FILE:superplace-cli>
+             ${CMAKE_CURRENT_SOURCE_DIR}/gp_stagnation)
 endif()
 sp_add_test(test_viz_writer)
 

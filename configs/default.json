@@ -26,6 +26,7 @@
   "cgp_target_overflow": 0.10,
   "gp_max_iter": 2000,
   "gp_bin_dim": 0,
+  "gp_diagnostics": false,
   "density_chunks": 8,
   "poisson_backend": "cpu",
   "ignore_net_degree": 100,

@@ -32,6 +32,11 @@ struct OptConfig {
     int   max_backtrack = 10;   ///< 每步最多试走次数
     float init_step = 0.f;      ///< <=0 表示用扰动法自动估计首步步长
     float init_perturb = 0.1f;  ///< 扰动法的相对扰动幅度
+    // Controlled diagnostic ablations; production callers retain these defaults.
+    bool momentum = true;
+    float step_scale = 1.f;
+    bool adaptive_restart = false;
+    bool gradient_restart = false; ///< diagnostic: also restart on gradient reversal
 };
 
 class Optimizer {
@@ -49,6 +54,7 @@ public:
     virtual float  stepSize() const = 0;     ///< 最近一次使用的 α
     virtual float  gradNorm() const = 0;     ///< 最近一次梯度的 L2 范数
     virtual long   evaluations() const = 0;  ///< 累计调用目标函数的次数（不含首步估计）
+    virtual long   restarts() const { return 0; }
 
 protected:
     Optimizer() = default;

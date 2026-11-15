@@ -1,0 +1,12 @@
+{
+  "target_density": 0.5,
+  "target_overflow": 0.1,
+  "cgp_target_overflow": 0.1,
+  "gp_max_iter": 2000,
+  "lambda_schedule": "fixed",
+  "poisson_backend": "cpu",
+  "num_threads": 16,
+  "random_seed": 1002,
+  "gp_diagnostics": true,
+  "plot": false
+}

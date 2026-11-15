@@ -83,6 +83,7 @@ struct Config {
     int   ignore_net_degree = 100;
     /// bin 网格维度；0 表示按 05 §5.5.3 自动推算（2 的幂，上限 1024）
     int   gp_bin_dim        = 0;
+    bool  gp_diagnostics    = false; ///< Opt-in local density/force snapshots; never affects optimization.
     /// 密度累加的局部网格块数。
     ///
     /// 【固定块数而非线程数】：清零与规约都是 O(块数 × bin 数)，若按线程数分配，

@@ -45,6 +45,10 @@ struct GpResult {
 struct GpRunOptions {
     bool freezeGamma = false;
     bool freezeLambda = false;
+    bool noMomentum = false;
+    float stepScale = 1.f;
+    bool adaptiveRestart = false;
+    bool gradientRestart = false;
 };
 
 /// 一次全局布局的执行体。构造时完成 bin 网格初始化等一次性工作，

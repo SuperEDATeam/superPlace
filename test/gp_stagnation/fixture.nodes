@@ -1,0 +1,68 @@
+UCLA nodes 1.0
+NumNodes : 65
+NumTerminals : 32
+c0 2 2
+c1 2 2
+c2 2 2
+c3 2 2
+c4 2 2
+c5 2 2
+c6 2 2
+c7 2 2
+c8 2 2
+c9 2 2
+c10 2 2
+c11 2 2
+c12 2 2
+c13 2 2
+c14 2 2
+c15 2 2
+c16 2 2
+c17 2 2
+c18 2 2
+c19 2 2
+c20 2 2
+c21 2 2
+c22 2 2
+c23 2 2
+c24 2 2
+c25 2 2
+c26 2 2
+c27 2 2
+c28 2 2
+c29 2 2
+c30 2 2
+c31 2 2
+m 40 40
+p0 0 0 terminal_NI
+p1 0 0 terminal_NI
+p2 0 0 terminal_NI
+p3 0 0 terminal_NI
+p4 0 0 terminal_NI
+p5 0 0 terminal_NI
+p6 0 0 terminal_NI
+p7 0 0 terminal_NI
+p8 0 0 terminal_NI
+p9 0 0 terminal_NI
+p10 0 0 terminal_NI
+p11 0 0 terminal_NI
+p12 0 0 terminal_NI
+p13 0 0 terminal_NI
+p14 0 0 terminal_NI
+p15 0 0 terminal_NI
+p16 0 0 terminal_NI
+p17 0 0 terminal_NI
+p18 0 0 terminal_NI
+p19 0 0 terminal_NI
+p20 0 0 terminal_NI
+p21 0 0 terminal_NI
+p22 0 0 terminal_NI
+p23 0 0 terminal_NI
+p24 0 0 terminal_NI
+p25 0 0 terminal_NI
+p26 0 0 terminal_NI
+p27 0 0 terminal_NI
+p28 0 0 terminal_NI
+p29 0 0 terminal_NI
+p30 0 0 terminal_NI
+p31 0 0 terminal_NI

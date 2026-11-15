@@ -31,21 +31,76 @@ class GateTests(unittest.TestCase):
             for stage in ['init', 'gp']:
                 (run / design / f'{design}.{stage}.pl').write_text('layout\n')
 
-    def gate(self, aggregation='paired-designs'):
+    def gate(self, aggregation='paired-designs', changed_stages=None):
         return subprocess.run(['python3', str(ROOT / 'scripts/m3_compare.py'),
             str(self.root / 'baseline'), str(self.root / 'candidate'), '--expected-count',
             str(len(list((self.root / 'baseline').glob('*/*/seed-1002/manifest.json')))),
-            '--suite-aggregation', aggregation],
+            '--suite-aggregation', aggregation] +
+            (['--changed-stages', *changed_stages] if changed_stages else []),
             capture_output=True, text=True)
 
     def test_identical_passes(self):
         self.run_pair()
         self.assertEqual(self.gate().returncode, 0)
 
+    def test_mgp_changes_need_explicit_contract_and_cannot_hide_nonconvergence(self):
+        self.run_pair()
+        out = self.root / 'candidate/ispd2005/adaptec1/seed-1002/adaptec1/summary.json'
+        data = json.loads(out.read_text()); data['mgp_hpwl'] = 90
+        old = self.root / 'baseline/ispd2005/adaptec1/seed-1002/adaptec1/summary.json'
+        before = json.loads(old.read_text()); before['mgp_hpwl'] = 100
+        old.write_text(json.dumps(before)); out.write_text(json.dumps(data))
+        self.assertNotEqual(self.gate().returncode, 0)
+        self.assertEqual(self.gate(changed_stages=['mgp']).returncode, 0)
+        data['mgp_overflow'] = .2; out.write_text(json.dumps(data))
+        self.assertIn('new nonconvergence', self.gate(changed_stages=['mgp']).stdout)
+
+    def test_cgp_change_requires_identical_mgp_snapshot(self):
+        self.run_pair()
+        for label in ['baseline', 'candidate']:
+            p = self.root / label / 'ispd2005/adaptec1/seed-1002/adaptec1/adaptec1.mgp.pl'
+            p.write_text(label)
+        self.assertIn('mgp.pl changed', self.gate(changed_stages=['cgp']).stdout)
+
+    def test_failed_summary_cannot_pass_with_completion_marker(self):
+        self.run_pair()
+        path = self.root / 'candidate/ispd2005/adaptec1/seed-1002/adaptec1/summary.json'
+        data = json.loads(path.read_text()); data['run_status'] = 'failed'
+        path.write_text(json.dumps(data))
+        self.assertNotEqual(self.gate().returncode, 0)
+
+    def test_runner_never_marks_failed_summary_complete_even_if_child_exits_zero(self):
+        binary = self.root / 'fake-cli'
+        binary.write_text('#!/usr/bin/env python3\nimport sys,json\nfrom pathlib import Path\n'
+            'out=Path(sys.argv[sys.argv.index("--out")+1])/"adaptec1"\n'
+            'out.mkdir(parents=True,exist_ok=True)\n'
+            '(out/"summary.json").write_text(json.dumps({"run_status":"failed"}))\n')
+        binary.chmod(0o755)
+        bench = self.root / 'bench/ispd2005/adaptec1'
+        bench.mkdir(parents=True); (bench / 'adaptec1.aux').write_text('fixture')
+        out = self.root / 'audit'
+        r = subprocess.run(['python3', str(ROOT/'scripts/m3_audit.py'), '--bin', str(binary),
+            '--bench-root', str(self.root/'bench'), '--out', str(out),
+            '--config', str(ROOT/'configs/default.json'), '--designs', 'ispd2005/adaptec1'],
+            capture_output=True, text=True)
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertFalse((out/'ispd2005/adaptec1/seed-1002/completed.json').exists())
+
     def test_missing_candidate_fails(self):
         self.run_pair()
         (self.root / 'candidate/ispd2005/adaptec1/seed-1002/completed.json').unlink()
         self.assertNotEqual(self.gate().returncode, 0)
+
+    def test_rejected_campaign_does_not_launch_more_runs(self):
+        out = self.root / 'rejected'
+        out.mkdir()
+        (out/'campaign-rejection.json').write_text('{"reason":"new nonconvergence"}')
+        result = subprocess.run(['python3', str(ROOT/'scripts/m3_audit.py'),
+            '--bin', str(self.root/'must-not-run'), '--out', str(out)],
+            capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Refusing rejected campaign', result.stderr)
+        self.assertFalse(list(out.glob('*/*/seed-*/manifest.json')))
 
     def test_error_fails(self):
         self.run_pair(error=True)

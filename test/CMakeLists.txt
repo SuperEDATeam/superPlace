@@ -74,6 +74,22 @@ sp_check_case(out_core   outcore.pl   "Out of core: +1\n.*Result: +FAIL")
 sp_check_case(macro_site macrosite.pl "Off-site: +1\n.*Result: +FAIL")
 sp_check_case(flipped    flipped.pl   "HPWL: +17\\.5\nResult: +PASS")
 
+# --pl：从已有位置单独跑 lg（GUI 的 legalize 命令依赖它）
+add_test(NAME cli_pl_lg
+         COMMAND ${CMAKE_COMMAND}
+                 -DCLI=$<TARGET_FILE:superplace-cli>
+                 -DCHECK=$<TARGET_FILE:superplace-check>
+                 -DAUX=${CMAKE_CURRENT_SOURCE_DIR}/check/tiny.aux
+                 -DPL=${CMAKE_CURRENT_SOURCE_DIR}/check/lg_input.pl
+                 -DOUT=${CMAKE_BINARY_DIR}/cli_pl_lg
+                 -P ${CMAKE_CURRENT_SOURCE_DIR}/check/run_lg_pl.cmake)
+add_test(NAME cli_pl_missing
+         COMMAND superplace-cli --aux ${CMAKE_CURRENT_SOURCE_DIR}/check/tiny.aux
+                 --pl ${CMAKE_CURRENT_SOURCE_DIR}/check/no_such.pl --stage parse --no-plot
+                 --out ${CMAKE_BINARY_DIR}/cli_pl_missing)
+set_tests_properties(cli_pl_lg cli_pl_missing PROPERTIES LABELS check)
+set_tests_properties(cli_pl_missing PROPERTIES WILL_FAIL TRUE)
+
 if(ENABLE_CUDA)
     sp_add_test(test_poisson_parity)   # CPU 与 CUDA 泊松后端逐点对拍
 endif()

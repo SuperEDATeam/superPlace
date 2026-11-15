@@ -41,6 +41,8 @@ std::string Config::usage() {
         "\n"
         "Options:\n"
         "  --aux <path>        BookShelf .aux file (required)\n"
+        "  --pl <path>         Start from this .pl instead of the one listed in .aux\n"
+        "                      (e.g. a saved <design>.gp.pl with --stage parse,lg)\n"
         "  --config <path>     JSON config file\n"
         "  --out <dir>         Output directory (default: results)\n"
         "  --stage <list>      Comma-separated stages to run (default: parse)\n"
@@ -140,6 +142,8 @@ Config Config::fromArgs(int argc, char** argv) {
             throw std::invalid_argument("help");
         } else if (a == "--aux") {
             cfg.aux_path = need(i, "--aux");    ++i; cliSet.insert("aux_path");
+        } else if (a == "--pl") {
+            cfg.pl_path = need(i, "--pl");      ++i;
         } else if (a == "--config") {
             pendingConfig = need(i, "--config"); ++i;
         } else if (a == "--out") {

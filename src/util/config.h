@@ -10,6 +10,7 @@ namespace sp {
 struct Config {
     // ---------------------------------------------------------------- 路径
     std::string aux_path;
+    std::string pl_path;          // 非空时用它覆盖 .aux 里 .pl 的位置（如单独对 gp.pl 跑 lg）
     std::string config_path;
     std::string out_dir = "results";
     std::string benchmark_name;   // 由 aux_path 推导

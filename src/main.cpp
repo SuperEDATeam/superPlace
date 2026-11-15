@@ -58,6 +58,13 @@ int main(int argc, char** argv) {
             sp::Timer t;
             sp::BookshelfReader reader;
             reader.read(cfg.aux_path, db);
+            // 在 read() 之后覆盖：宏已按原始输入判定并分区，.pl 里的 /FIXED 再把它们
+            // 置为固定，与流水线里 mLG 之后的状态一致。
+            if (!cfg.pl_path.empty()) {
+                reader.readPlacement(cfg.pl_path, db);
+                sink.setSummary("pl_path", cfg.pl_path);
+                SP_INFO("placement loaded: %s", cfg.pl_path.c_str());
+            }
             sink.recordDuration("read", t.elapsedMs());
             SP_INFO("parse done in %.1f ms", t.elapsedMs());
         }

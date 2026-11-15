@@ -127,6 +127,9 @@ struct Config {
     /// τ 暴涨，cGP 只好把铺开重做一遍，最终线长反而更差（见 05 §5.6.2）。
     float macro_sa_disp_weight = 1.0f;
 
+    // ----------------------------------------------------- 标准单元合法化（M5）
+    std::string lg_cell_weight = "unit";
+
     /// 从命令行构造。会先读 --config 指向的 JSON，再让 CLI 参数覆盖。
     /// 解析失败时抛 std::runtime_error。
     static Config fromArgs(int argc, char** argv);

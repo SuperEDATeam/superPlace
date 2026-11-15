@@ -15,7 +15,8 @@
 装好下文「装依赖」里的系统包后，在仓库任意位置运行：
 
 ```bash
-scripts/viz.sh                       # 打开仓库自带的合成样本
+scripts/viz.sh                       # 空白启动，在右栏「数据源」下拉框里选设计
+scripts/viz.sh gui/sample-data/synthetic   # 打开仓库自带的合成样本
 scripts/viz.sh newblue1              # 按设计名查找；没录过就先用 CLI 录制（约 45 秒）再打开
 scripts/viz.sh ispd2006/newblue1     # 同名设计有多份时，用 套件/设计 指定
 scripts/viz.sh path/to/design.aux    # 指定 .aux 文件

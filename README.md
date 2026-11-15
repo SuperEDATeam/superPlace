@@ -96,7 +96,8 @@ python3 scripts/make_gif.py results/adaptec1
 ## 查看布局（前端）
 
 ```bash
-scripts/viz.sh                    # 打开仓库自带的合成样本
+scripts/viz.sh                    # 空白启动，在右栏「数据源」下拉框里选设计（答辩演示用）
+scripts/viz.sh gui/sample-data/synthetic   # 打开仓库自带的合成样本
 scripts/viz.sh ispd2006/newblue1  # 没录过就先录制（约 45 秒），再打开，可拖进度条看全过程
 scripts/viz.sh --help             # 全部用法
 ```

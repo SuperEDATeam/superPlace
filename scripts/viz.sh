@@ -6,7 +6,8 @@
 #   - 指定一个设计时，若还没录过，先用 CLI 录制，再打开
 #
 # 用法：
-#   scripts/viz.sh                          打开仓库自带的合成样本
+#   scripts/viz.sh                          空白启动，在右栏「数据源」下拉框里选设计
+#   scripts/viz.sh gui/sample-data/synthetic   打开仓库自带的合成样本
 #   scripts/viz.sh newblue1                 按设计名查找；没录过就先录（约 45 秒）
 #   scripts/viz.sh mms/adaptec1             同名设计有多份时，用 套件/设计 指定
 #   scripts/viz.sh path/to/design.aux       指定 .aux 文件
@@ -14,7 +15,7 @@
 #
 #   --rerecord     即使录过也重新录（算法代码改过之后用）
 #   --stride N     每 N 轮迭代录一帧，默认 10
-#   其余参数原样交给查看器，例如 --frame -1
+#   其余参数原样交给查看器，例如 --frame -1、--ui-scale 1.25
 #
 # 录制结果存在 results/play/<套件>/<设计>/viz/，按套件分开，避免同名设计互相覆盖。
 set -euo pipefail
@@ -29,11 +30,11 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --rerecord) RERECORD=1; shift ;;
         --stride)   STRIDE="${2:?--stride 需要一个数字}"; shift 2 ;;
-        -h|--help)  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*)
             # 查看器参数；带值的那几个要连同它的值一起转交
             case "$1" in
-                --frame|--bench|--bench-ui|--bench-csv|--screenshot|--shot-after)
+                --frame|--bench|--bench-ui|--bench-csv|--screenshot|--shot-after|--ui-scale|--width|--height|--zoom)
                     PASS+=("$1" "${2:?$1 需要一个值}"); shift 2 ;;
                 *) PASS+=("$1"); shift ;;
             esac ;;
@@ -76,7 +77,7 @@ record_and_resolve() {   # $1 = .aux 路径, $2 = 套件名；输出 bundle 目�
 }
 
 if [[ -z "$TARGET" ]]; then
-    BUNDLE="$ROOT/gui/sample-data/synthetic"
+    BUNDLE=""
 elif [[ -d "$TARGET" && -f "$TARGET/scene.json" ]]; then
     BUNDLE="$(cd "$TARGET" && pwd)"
 elif [[ "$TARGET" == /* || "$TARGET" == .* || "$TARGET" == ~* ]] && [[ "$TARGET" != *.aux ]]; then
@@ -116,7 +117,11 @@ if [[ -z "${GALLIUM_DRIVER:-}" ]] && grep -qi microsoft /proc/version 2>/dev/nul
     export GALLIUM_DRIVER=d3d12
 fi
 
-say "打开 $BUNDLE"
 # 在 gui/ 下运行：查看器把面板布局记在当前目录的 superplace-gui.ini 里
 cd "$ROOT/gui"
+if [[ -z "$BUNDLE" ]]; then
+    say "空白启动"
+    exec ./build/superplace-viz ${PASS[@]+"${PASS[@]}"}
+fi
+say "打开 $BUNDLE"
 exec ./build/superplace-viz "$BUNDLE" ${PASS[@]+"${PASS[@]}"}

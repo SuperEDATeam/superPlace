@@ -28,7 +28,7 @@ void writeRecord(std::vector<uint8_t>& out, uint8_t type, uint8_t dt,
     out.push_back(type);
     out.push_back(dt);
     const auto* p = static_cast<const uint8_t*>(data);
-    out.insert(out.end(), p, p + len);
+    if (len) out.insert(out.end(), p, p + len);
 }
 
 void writeRecord(std::vector<uint8_t>& out, uint8_t type, uint8_t dt) {
@@ -91,15 +91,49 @@ int gdsLayerForKind(uint8_t kind, uint8_t flags) {
 std::string writeGdsFile(const std::string& outPath, const std::string& designName,
                          const NodeGeometry& geom, const float* px, const float* py,
                          const Rect& core, std::string* err) {
+    if (err) err->clear();
+    if (designName.empty() || designName.size() > 65530 || designName.find('\0') != std::string::npos) {
+        if (err) *err = "GDSII 名称为空、过长或含 NUL";
+        return {};
+    }
     if (!px || !py) {
         if (err) *err = "没有可导出的位置";
         return {};
     }
-    if (geom.w.size() != geom.h.size() || geom.kind.size() != geom.w.size()) {
+    if (geom.w.size() != geom.h.size() || geom.kind.size() != geom.w.size() ||
+        geom.flags.size() != geom.w.size()) {
         if (err) *err = "几何数据不一致";
         return {};
     }
+    // Reject invalid geometry before opening/truncating an existing export.
+    const auto validCoord = [](double v) {
+        return std::isfinite(v) && v * 1000.0 >= double(INT32_MIN) &&
+               v * 1000.0 <= double(INT32_MAX);
+    };
     const size_t n = geom.w.size();
+    for (size_t i = 0; i < n; ++i) {
+        if (!gdsLayerForKind(geom.kind[i], geom.flags[i])) continue;
+        const double w = geom.w[i], h = geom.h[i];
+        if (!std::isfinite(w) || !std::isfinite(h) || !std::isfinite(px[i]) || !std::isfinite(py[i])) {
+            if (err) *err = "坐标或尺寸不是有限数";
+            return {};
+        }
+        if (w <= 0 || h <= 0) continue;
+        if (!validCoord(px[i] - w * 0.5) || !validCoord(px[i] + w * 0.5) ||
+            !validCoord(py[i] - h * 0.5) || !validCoord(py[i] + h * 0.5)) {
+            if (err) *err = "坐标超出 GDSII int32 范围";
+            return {};
+        }
+    }
+    if (!std::isfinite(core.lx) || !std::isfinite(core.ly) || !std::isfinite(core.hx) || !std::isfinite(core.hy)) {
+        if (err) *err = "core 坐标不是有限数";
+        return {};
+    }
+    if (core.width() > 0.f && core.height() > 0.f &&
+        (!validCoord(core.lx) || !validCoord(core.ly) || !validCoord(core.hx) || !validCoord(core.hy))) {
+        if (err) *err = "core 坐标超出 GDSII int32 范围";
+        return {};
+    }
 
     std::vector<uint8_t> out;
     out.reserve(n * 64 + 256);
@@ -124,8 +158,8 @@ std::string writeGdsFile(const std::string& outPath, const std::string& designNa
     std::memcpy(units + 8, u2.data(), 8);
     writeRecord(out, 0x03, 0x05, units, sizeof(units));
 
-    writeRecord(out, 0x06, 0x02, time24, sizeof(time24));   // BGNSTR
-    writeStringRecord(out, 0x07, designName);               // STRNAME
+    writeRecord(out, 0x05, 0x02, time24, sizeof(time24));   // BGNSTR
+    writeStringRecord(out, 0x06, designName);               // STRNAME
 
     auto writeRect = [&](int32_t x0, int32_t y0, int32_t x1, int32_t y1, int layer) {
         writeRecord(out, 0x08, 0x00);                       // BOUNDARY
@@ -148,13 +182,14 @@ std::string writeGdsFile(const std::string& outPath, const std::string& designNa
     for (size_t i = 0; i < n; ++i) {
         const int layer = gdsLayerForKind(geom.kind[i], geom.flags[i]);
         if (layer == 0) continue;
-        const float w = geom.w[i], h = geom.h[i];
-        if (w <= 0.f || h <= 0.f) continue;
-        const float cx = px[i], cy = py[i];
-        const int32_t x0 = dbu(cx - w * 0.5f);
-        const int32_t y0 = dbu(cy - h * 0.5f);
-        const int32_t x1 = dbu(cx + w * 0.5f);
-        const int32_t y1 = dbu(cy + h * 0.5f);
+        const double w = geom.w[i], h = geom.h[i];
+        if (w <= 0.0 || h <= 0.0) continue;
+        const double cx = px[i], cy = py[i];
+        const int32_t x0 = dbu(cx - w * 0.5);
+        const int32_t y0 = dbu(cy - h * 0.5);
+        const int32_t x1 = dbu(cx + w * 0.5);
+        const int32_t y1 = dbu(cy + h * 0.5);
+        if (x1 <= x0 || y1 <= y0) continue;  // Sub-nm rectangles collapse after quantization.
         writeRect(x0, y0, x1, y1, layer);
     }
 
@@ -163,8 +198,8 @@ std::string writeGdsFile(const std::string& outPath, const std::string& designNa
         writeRect(dbu(core.lx), dbu(core.ly), dbu(core.hx), dbu(core.hy), 10);
     }
 
-    writeRecord(out, 0x12, 0x00);                       // ENDSTR
-    writeRecord(out, 0x13, 0x00);                       // ENDLIB
+    writeRecord(out, 0x07, 0x00);                       // ENDSTR
+    writeRecord(out, 0x04, 0x00);                       // ENDLIB
 
     std::ofstream file(outPath, std::ios::binary | std::ios::trunc);
     if (!file) {

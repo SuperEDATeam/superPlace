@@ -34,6 +34,8 @@ extern char** environ;
 #include "viz/nets.h"
 #include "viz/displacement.h"
 #include "viz/gds_writer.h"
+#include "viz/gds_reader.h"
+#include "viz/child_process.h"
 
 namespace fs = std::filesystem;
 
@@ -477,12 +479,22 @@ void App::rebuildIndexIfDirty() {
 }
 
 // T24：点击时用当前插值位置强制重建索引（不依赖 statsSource 关键帧）。
-void App::rebuildIndexAtCurrent() {
-    if (!src_) return;
+bool App::rebuildIndexAtCurrent() {
+    if (!src_) return false;
     const PlaybackController::DisplayState ds = playback_.state();
     FrameView lo, hi;
-    src_->frame(std::max(0, ds.lo), lo);
-    if (ds.hi > ds.lo) src_->frame(ds.hi, hi);
+    if (!src_->frame(std::max(0, ds.lo), lo) || !lo.valid()) {
+        selected_ = -1;
+        selectedNameBuf_.clear();
+        status_ = "帧加载失败，无法点选";
+        return false;
+    }
+    if (ds.hi > ds.lo && (!src_->frame(ds.hi, hi) || !hi.valid())) {
+        selected_ = -1;
+        selectedNameBuf_.clear();
+        status_ = "帧加载失败，无法点选";
+        return false;
+    }
     const int n = src_->scene().nodeCount;
     interpX_.assign(n, 0.f); interpY_.assign(n, 0.f);
     for (int i = 0; i < n; ++i) {
@@ -494,6 +506,7 @@ void App::rebuildIndexAtCurrent() {
         interpX_[i] = x; interpY_[i] = y;
     }
     pickIndex_.build(src_->scene().chip, interpX_.data(), interpY_.data(), src_->geometry());
+    return true;
 }
 
 void App::rebuildDensityIfDirty() {
@@ -690,7 +703,11 @@ int App::run() {
         // T33：布局跑满核期间主循环降到约 10 fps，不抢 CPU。
         if (placeRunning_) glfwWaitEventsTimeout(0.1);
         else glfwPollEvents();
-        pollPlace();
+        // Capture before polling: checker completion must not advance the GP
+        // playhead in the same iteration or change the existing playing state.
+        const bool freezePlayback = placeRunning_ && processTask_ != ProcessTask::Place;
+        pollPlace(processNow());
+        pollKlayout();
         uploadGeometry();
 
         // T14：按真实帧间隔推进回放时间轴，再同步位置/懒统计。
@@ -700,10 +717,11 @@ int App::run() {
             lastFrameTime_ = now;
             if (opt_.benchUiFrames > 0) {
                 // bench 模式用固定 1/60 推进（headless 实时 dt 会卡住 globalT）。
-                if (!opt_.paused) playback_.advance(1.0 / 60.0);
+                if (!opt_.paused && !freezePlayback) playback_.advance(1.0 / 60.0);
                 syncPlayback();
             } else if (src_ && !metas_.empty()) {
-                playback_.advance(dt);
+                // T42: preserve the current GP playhead while legalize/check runs.
+                if (!freezePlayback) playback_.advance(dt);
                 syncPlayback();
             }
         }
@@ -941,13 +959,11 @@ void App::drawUi() {
     // 会塌缩——它的尺寸取自窗口可用区，内容又按该尺寸建 InvisibleButton，
     // 自适应窗口下这是个会一路缩到最小的反馈环（实测缩成 16x1）。
     // 停靠到中央节点后尺寸由 dockspace 决定，环就断了。
-    // 首次运行搭默认布局。只把右侧"控制/检视"交给 DockBuilder；底部"收敛曲线/帧对比"
-    // 用固定尺寸窗口钉在视口底部（见 drawMetricsPanel/drawComparePanel），避免空中央
-    // 节点每帧重排把底部节点收成一条标签条。
+    // First-frame docking also registers the hidden inspection window by name.
+    // The central node stays empty for GL; curves and terminal share the bottom node.
     if (!layoutBuilt_) {
-        const bool ready =
-            ImGui::FindWindowByName("控制") && ImGui::FindWindowByName("检视");
-        if (ready) {
+        // DockBuilder accepts names before a window's first Begin (including hidden inspection).
+        {
             layoutBuilt_ = true;
             ImGui::DockBuilderRemoveNode(dockId);
             ImGui::DockBuilderAddNode(dockId, ImGuiDockNodeFlags_DockSpace |
@@ -1049,9 +1065,9 @@ void App::drawCanvasPanel(unsigned dockId) {
                 float wx = 0.f, wy = 0.f;
                 cam_.screenToWorld(io.MousePos.x - canvasX_, io.MousePos.y - canvasY_,
                                    canvasW_, canvasH_, &wx, &wy);
-                rebuildIndexAtCurrent();
-                // T24：5px 屏幕容差（5/scale），先真实几何再容差内最近。
-                selected_ = pickIndex_.pickTolerant(wx, wy, 5.f / cam_.scale, canvas_.layerVisible);
+                // Never query an index belonging to a previous, valid frame after load failure.
+                selected_ = rebuildIndexAtCurrent()
+                    ? pickIndex_.pickTolerant(wx, wy, 5.f / cam_.scale, canvas_.layerVisible) : -1;
                 if (selected_ < 0) {
                     // T28：取消选中后清掉左上角残留的选中名。
                     selectedNameBuf_.clear();
@@ -1450,17 +1466,7 @@ void App::drawSidebar() {
     // 原路径输入框 + 加载按钮保留（开发用）。
     ImGui::SetNextItemWidth(-1);
     ImGui::InputText("##path", pathBuf_, sizeof(pathBuf_));
-    if (ImGui::Button("加载 bundle")) {
-        std::string err;
-        auto s = makeBundleSource(pathBuf_, &err);
-        if (s) {
-            std::error_code ec;
-            bundlePath_ = fs::weakly_canonical(fs::path(pathBuf_), ec).string();
-            setSource(std::move(s));
-        } else {
-            status_ = "加载失败：" + err;
-        }
-    }
+    if (ImGui::Button("加载 bundle")) openBundle(pathBuf_);
     if (ImGui::SmallButton("重置布局")) {
         layoutBuilt_ = false;
         focusTab_ = "收敛曲线";   // T30：重置布局后恢复到默认标签页
@@ -1915,6 +1921,8 @@ std::string App::repoRoot() {
 
 void App::openBundle(const std::string& dir) {
     if (dir.empty()) return;
+    gdsExportMsg_.clear();
+    lastGdsPath_.clear();
     std::string err;
     auto s = makeBundleSource(dir, &err);
     if (s) {
@@ -1942,6 +1950,9 @@ void App::handleTerminalCommand(const std::string& cmdRaw) {
         terminalLines_.push_back("stop   取消正在运行的布局");
         terminalLines_.push_back("help   显示本帮助");
         terminalLines_.push_back("clear  清空输出区");
+        terminalLines_.push_back("gdsinfo  打印当前 GDSII 文件摘要");
+        terminalLines_.push_back("klayout  在 KLayout 中打开当前 GDSII");
+        terminalLines_.push_back("legalize  对当前 newblue1 的 GP 结果执行合法化并检查");
         return;
     }
     if (cmd == "clear") {
@@ -1953,6 +1964,9 @@ void App::handleTerminalCommand(const std::string& cmdRaw) {
         else terminalLines_.push_back("没有正在运行的布局");
         return;
     }
+    if (cmd == "gdsinfo") { showGdsInfo(); return; }
+    if (cmd == "klayout") { launchKlayout(); return; }
+    if (cmd == "legalize") { startLegalize(); return; }
     if (cmd == "place") {
         if (placeRunning_) {
             terminalLines_.push_back("布局正在运行，先 stop");
@@ -1967,6 +1981,10 @@ void App::handleTerminalCommand(const std::string& cmdRaw) {
         return;
     }
     terminalLines_.push_back("未知命令，输入 help 查看");
+}
+
+double App::processNow() {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 void App::startPlace() {
@@ -1987,39 +2005,22 @@ void App::startPlace() {
     fs::remove(demoViz / "scene.json", ec);
     fs::create_directories(demoViz, ec);
 
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    const int mode = 0644;
-    // stdout/stderr 重定向到 run.log。
-    posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, runLog.c_str(),
-                                     O_WRONLY | O_CREAT | O_TRUNC, mode);
-    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, runLog.c_str(),
-                                     O_WRONLY | O_CREAT | O_APPEND, mode);
-
-    const char* argv[] = {
-        cli.c_str(),
-        "--aux", aux.c_str(),
-        "--config", config.c_str(),
-        "--stage", "parse,init,gp",
-        "--frame-stride", "10",
-        "--no-plot",
-        "--out", out.c_str(),
-        nullptr,
-    };
     pid_t pid = -1;
-    const int rc = posix_spawn(&pid, cli.c_str(), &actions, nullptr,
-                               const_cast<char* const*>(argv), environ);
-    posix_spawn_file_actions_destroy(&actions);
+    const int rc = spawnLogged({cli.string(), "--aux", aux.string(), "--config", config.string(),
+                               "--stage", "parse,init,gp", "--frame-stride", "10", "--no-plot",
+                               "--out", out.string()}, runLog.string(), pid);
     if (rc != 0) {
         terminalLines_.push_back("启动子进程失败：" + std::string(std::strerror(rc)));
         return;
     }
 
     placePid_ = pid;
+    processTask_ = ProcessTask::Place;
     placeRunning_ = true;
+    placeStopping_ = false;
     placeStage_.clear();
     placeIter_ = -1;
-    placeStartSec_ = glfwGetTime();
+    placeStartSec_ = processNow();
     placeLastPoll_ = 0.0;
     placeTargetDir_ = demoViz.string();
 
@@ -2036,16 +2037,72 @@ void App::stopPlace(bool report) {
         // 等待退出并在 3 秒仍存活时兜底升级 SIGKILL。
         kill(placePid_, SIGTERM);
         placeStopping_ = true;
-        placeStopSec_ = glfwGetTime();
+        placeStopSec_ = processNow();
     }
     if (report) terminalLines_.push_back("已取消");
 }
 
-void App::pollPlace() {
+void App::pollPlace(double now) {
     if (!placeRunning_) return;
-    const double now = glfwGetTime();
     if (now - placeLastPoll_ < 0.5) return;   // 每 0.5 秒轮询一次
     placeLastPoll_ = now;
+
+    if (processTask_ != ProcessTask::Place) {
+        if (placeStopping_ && now - placeStopSec_ > 3.0) kill(placePid_, SIGKILL);
+        int childStatus = 0;
+        const pid_t done = waitpid(placePid_, &childStatus, WNOHANG);
+        if (done == 0 || (done < 0 && errno == EINTR)) return;
+        const bool cancelled = placeStopping_;
+        placePid_ = -1;
+        placeRunning_ = false;
+        placeStopping_ = false;
+        if (cancelled) return;
+        const int code = done < 0 ? -1 : WIFEXITED(childStatus) ? WEXITSTATUS(childStatus)
+            : WIFSIGNALED(childStatus) ? 128 + WTERMSIG(childStatus) : -1;
+        const fs::path root(repoRoot());
+        const fs::path output = root / "results/demo-lg/newblue1";
+        if (processTask_ == ProcessTask::Legalize) {
+            nlohmann::json summary;
+            try { std::ifstream in(output / "summary.json"); if (in) in >> summary; } catch (...) { summary = nullptr; }
+            if (code != 0 || !summary.is_object() || !summary.contains("lg_hpwl") ||
+                !summary["lg_hpwl"].is_number()) {
+                terminalLines_.push_back("合法化失败（退出码 " + std::to_string(code) +
+                    "），详见 results/demo-lg/newblue1/run.log");
+                return;
+            }
+            pid_t pid = -1;
+            const int rc = spawnLogged({(root / "build/superplace-check").string(),
+                (root / "benchmarks/ispd2006/newblue1/newblue1.aux").string(),
+                (output / "newblue1.lg.pl").string()}, (output / "check.log").string(), pid);
+            if (rc) {
+                terminalLines_.push_back("启动检查器失败：" + std::string(std::strerror(rc)));
+                return;
+            }
+            processTask_ = ProcessTask::Check;
+            placePid_ = pid;
+            placeRunning_ = true;
+            return;
+        }
+        nlohmann::json summary;
+        try { std::ifstream in(output / "summary.json"); if (in) in >> summary; } catch (...) { summary = nullptr; }
+        static const char* keys[] = {"lg_cells", "lg_failed", "lg_hpwl_before", "lg_hpwl", "lg_disp_mean", "lg_disp_max"};
+        bool valid = summary.is_object();
+        for (const auto* key : keys) valid = valid && summary.contains(key) && summary[key].is_number();
+        if (!valid) { terminalLines_.push_back("合法化摘要缺失，详见 results/demo-lg/newblue1/run.log"); return; }
+        char line[512];
+        std::snprintf(line, sizeof(line), "合法化完成：%s 个单元，失败 %d，用时 %.1f 秒",
+            human(summary["lg_cells"].get<long long>()).c_str(), summary["lg_failed"].get<int>(), now - placeStartSec_);
+        terminalLines_.push_back(line);
+        const double before = summary["lg_hpwl_before"].get<double>();
+        const double after = summary["lg_hpwl"].get<double>();
+        std::snprintf(line, sizeof(line), "HPWL %.3e → %.3e（%+.2f%%），位移 平均 %.1f / 最大 %.1f",
+            before, after, before > 0.0 ? (after / before - 1.0) * 100.0 : 0.0,
+            summary["lg_disp_mean"].get<double>(), summary["lg_disp_max"].get<double>());
+        terminalLines_.push_back(line);
+        terminalLines_.push_back(code == 0 ? "检查器：PASS" :
+            "检查器：FAIL，详见 results/demo-lg/newblue1/check.log");
+        return;
+    }
 
     const fs::path demoViz = fs::path(repoRoot()) / "results/demo/newblue1/viz";
 
@@ -2085,7 +2142,13 @@ void App::pollPlace() {
 
     int status = 0;
     const pid_t r = waitpid(placePid_, &status, WNOHANG);
-    if (r != placePid_) return;   // 仍在运行
+    if (r == 0 || (r < 0 && errno == EINTR)) return;
+    if (r < 0) {
+        terminalLines_.push_back("回收子进程失败：" + std::string(std::strerror(errno)));
+        placeRunning_ = placeStopping_ = false;
+        placePid_ = -1;
+        return;
+    }
 
     const bool cancelled = placeStopping_;
     placeRunning_ = false;
@@ -2139,8 +2202,11 @@ void App::drawTerminalPanel() {
     ImGui::SetScrollHereY(1.f);
     ImGui::EndChild();
 
-    if (placeRunning_) {
-        const double el = glfwGetTime() - placeStartSec_;
+    if (placeRunning_ && processTask_ != ProcessTask::Place) {
+        ImGui::TextDisabled("%s中，已用 %s", processTask_ == ProcessTask::Check ? "检查" : "合法化",
+            formatElapsed(processNow() - placeStartSec_).c_str());
+    } else if (placeRunning_) {
+        const double el = processNow() - placeStartSec_;
         const char* stageName = placeStage_.empty() ? "init" : placeStage_.c_str();
         // iter<0（parse/init 等尚未进入带轮号的迭代阶段）不显示「第 N 轮」，
         // 只报阶段态：「init 中，已用 xx」。
@@ -2163,8 +2229,8 @@ void App::drawTerminalPanel() {
 
 void App::exportGds() {
     if (!src_) return;
-    if (!lastPx_ || !lastPy_ || lastN_ <= 0) {
-        status_ = "当前没有可导出的位置";
+    if (!positionsValid_ || !lastPx_ || !lastPy_ || lastN_ <= 0) {
+        status_ = gdsExportMsg_ = "当前没有可导出的位置";
         return;
     }
     const SceneInfo& sc = src_->scene();
@@ -2192,6 +2258,104 @@ void App::exportGds() {
     const std::string msg = written.empty() ? "导出失败：" + err : "已导出：" + written;
     status_ = msg;
     gdsExportMsg_ = msg;
+    if (!written.empty()) lastGdsPath_ = written;
+}
+
+bool App::ensureCurrentGds() {
+    if (!src_) {
+        terminalLines_.push_back("先在『数据源』中选择设计");
+        return false;
+    }
+    if (lastGdsPath_.empty()) exportGds();
+    if (lastGdsPath_.empty()) {
+        terminalLines_.push_back(gdsExportMsg_.empty() ? status_ : gdsExportMsg_);
+        return false;
+    }
+    return true;
+}
+
+void App::showGdsInfo() {
+    if (!ensureCurrentGds()) return;
+    GdsInfo info;
+    std::string error;
+    if (!readGdsFile(lastGdsPath_, info, error)) {
+        terminalLines_.push_back("GDSII 解析失败：" + error);
+        return;
+    }
+    char line[512];
+    std::snprintf(line, sizeof(line), "%s（%.1f MB）", fs::path(lastGdsPath_).filename().c_str(),
+        static_cast<double>(info.fileBytes) / (1024.0 * 1024.0));
+    terminalLines_.push_back(line);
+    std::snprintf(line, sizeof(line), "库 %s，结构 %s；单位：1 用户单位 = %.6g µm，数据库单位 = %.6g nm",
+        info.library.c_str(), info.structure.c_str(), info.userUnitMeters * 1e6, info.databaseUnitMeters * 1e9);
+    terminalLines_.push_back(line);
+    const std::pair<int, const char*> layers[] = {{1, "标准单元"}, {2, "宏"}, {3, "固定块"}, {10, "core 边界"}};
+    for (const auto& entry : layers)
+        terminalLines_.push_back("图层 " + std::to_string(entry.first) + "  " + entry.second + "  " +
+            human(static_cast<long long>(info.layerCounts[entry.first])));
+    std::snprintf(line, sizeof(line), "包围盒 (%.3f, %.3f) – (%.3f, %.3f) µm；记录结构完整",
+        info.lx, info.ly, info.hx, info.hy);
+    terminalLines_.push_back(line);
+}
+
+void App::launchKlayout() {
+    if (!ensureCurrentGds()) return;
+    const std::string layers = (fs::path(repoRoot()) / "gui/assets/superplace.lyp").string();
+    char* argv[] = {const_cast<char*>("klayout"), const_cast<char*>("-l"),
+        const_cast<char*>(layers.c_str()), const_cast<char*>(lastGdsPath_.c_str()), nullptr};
+    pid_t pid = -1;
+    const int rc = posix_spawnp(&pid, "klayout", nullptr, nullptr, argv, environ);
+    if (rc == ENOENT) terminalLines_.push_back("未找到 klayout，请先 sudo apt install klayout");
+    else if (rc) terminalLines_.push_back("启动 KLayout 失败：" + std::string(std::strerror(rc)));
+    else {
+        klayoutPids_.push_back(pid);
+        terminalLines_.push_back("已在 KLayout 中打开 " + fs::path(lastGdsPath_).filename().string());
+    }
+}
+
+void App::pollKlayout() {
+    klayoutPids_.erase(std::remove_if(klayoutPids_.begin(), klayoutPids_.end(), [](pid_t pid) {
+        const pid_t result = waitpid(pid, nullptr, WNOHANG);
+        return result == pid || (result < 0 && errno == ECHILD);
+    }), klayoutPids_.end());
+}
+
+void App::startLegalize() {
+    if (placeRunning_) {
+        terminalLines_.push_back("布局运行中，先 stop 或等它完成");
+        return;
+    }
+    const fs::path root(repoRoot());
+    std::error_code ec;
+    const fs::path current = fs::weakly_canonical(bundlePath_, ec);
+    const fs::path recorded = fs::weakly_canonical(root / "results/play/ispd2006/newblue1/viz", ec);
+    const fs::path demo = fs::weakly_canonical(root / "results/demo/newblue1/viz", ec);
+    if (!src_ || (current != recorded && current != demo)) {
+        terminalLines_.push_back("只有 newblue1 能合法化");
+        return;
+    }
+    const fs::path gp = current.parent_path() / "newblue1.gp.pl";
+    if (!fs::exists(gp)) { terminalLines_.push_back("未找到 GP 结果 " + gp.string()); return; }
+    const fs::path out = root / "results/demo-lg";
+    fs::create_directories(out / "newblue1", ec);
+    if (ec) { terminalLines_.push_back("无法创建合法化输出目录：" + ec.message()); return; }
+    // A successful exit without a fresh summary must not reuse a previous run.
+    fs::remove(out / "newblue1/summary.json", ec);
+    if (ec) { terminalLines_.push_back("无法清理旧合法化摘要：" + ec.message()); return; }
+    pid_t pid = -1;
+    const int rc = spawnLogged({(root / "build/superplace-cli").string(), "--aux",
+        (root / "benchmarks/ispd2006/newblue1/newblue1.aux").string(), "--pl", gp.string(),
+        "--config", (root / "configs/default.json").string(), "--stage", "parse,lg", "--no-plot", "--out", out.string()},
+        (out / "newblue1/run.log").string(), pid);
+    if (rc) { terminalLines_.push_back("启动合法化失败：" + std::string(std::strerror(rc))); return; }
+    // Main loop freezes time advancement without changing playback/colour state.
+    placePid_ = pid;
+    processTask_ = ProcessTask::Legalize;
+    placeRunning_ = true;
+    placeStopping_ = false;
+    placeStartSec_ = processNow();
+    placeLastPoll_ = 0.0;
+    focusTab_ = "终端";
 }
 
 }  // namespace viz

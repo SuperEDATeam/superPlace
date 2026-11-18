@@ -2221,6 +2221,8 @@ void App::drawTerminalPanel() {
                          ImGuiInputTextFlags_EnterReturnsTrue)) {
         handleTerminalCommand(terminalInput_);
         terminalInput_[0] = '\0';
+        // 回车会让输入框失焦；交回焦点，连续输入命令时不必再点一次。
+        ImGui::SetKeyboardFocusHere(-1);
     }
     ImGui::End();
 }
@@ -2300,8 +2302,12 @@ void App::showGdsInfo() {
 
 void App::launchKlayout() {
     if (!ensureCurrentGds()) return;
-    const std::string layers = (fs::path(repoRoot()) / "gui/assets/superplace.lyp").string();
-    char* argv[] = {const_cast<char*>("klayout"), const_cast<char*>("-l"),
+    const fs::path assets = fs::path(repoRoot()) / "gui/assets";
+    const std::string config = (assets / "klayoutrc").string();
+    const std::string layers = (assets / "superplace.lyp").string();
+    // -c/-t：用仓库里的配置启动（不弹提示窗）且不写回，不读写用户自己的 ~/.klayout/klayoutrc。
+    char* argv[] = {const_cast<char*>("klayout"), const_cast<char*>("-c"),
+        const_cast<char*>(config.c_str()), const_cast<char*>("-t"), const_cast<char*>("-l"),
         const_cast<char*>(layers.c_str()), const_cast<char*>(lastGdsPath_.c_str()), nullptr};
     pid_t pid = -1;
     const int rc = posix_spawnp(&pid, "klayout", nullptr, nullptr, argv, environ);

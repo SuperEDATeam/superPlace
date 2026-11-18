@@ -10,17 +10,18 @@
 > [work_report/06-前端开发方案与接口契约.md](../work_report/06-前端开发方案与接口契约.md)。
 > **接手前请先读那一份**，尤其是 **§8.2 当前实现状态**。
 
-## 当前新增功能（T37–T42，验收尚未闭环）
+## 最近新增功能（T37–T42，PR #7，2026-11-18 合并）
 
 - 空白启动也在首帧登记默认停靠布局；加载源后检视进入预留节点。
 - `--ui-scale` 取演示显示器的 Windows 缩放比例：笔记本 1.5（默认）、外屏 1.25、100%/投影 1.0–1.25；只保证最大化窗口，不做自动 DPI。
 - 终端支持七条命令：`place`、`stop`、`help`、`clear`、`gdsinfo`、`klayout`、`legalize`。
 - `gdsinfo` 读取本次运行最近导出的 GDSII；没有导出时先导当前帧，重新从磁盘解析单位、图层、计数和包围盒。
-- `klayout` 使用 PATH 中的 Linux KLayout（`sudo apt install klayout`），加载 `assets/superplace.lyp`。重复命令多开窗口，GUI 不等待它退出。
+- `klayout` 使用 PATH 中的 Linux KLayout（`sudo apt install klayout`），加载 `assets/superplace.lyp`（层名用英文，WSL 里 KLayout 显示不了中文）；用 `-c assets/klayoutrc -t` 启动，不弹 Tip 窗口，也不读写用户自己的 KLayout 配置。重复命令多开窗口，GUI 不等待它退出。
+- 终端回车提交后输入框保持焦点，可以连续输入命令。
 - `legalize` 只支持已录制/本次布局两种 newblue1 源，从对应 GP `.pl` 独立启动 CLI 和检查器，输出三行结论。**不加载 LG、不新增数据源、不改变 GP 显示位置或曲线**；原有播放只在运行期间冻结时间推进。
 - GDSII 记录代码已修正，输出为 1 µm 用户单位 / 1 nm 数据库单位，层 1/2/3/10 分别为标准单元/宏/固定块/core。
 
-自动逻辑、真实 CLI 调用链和第三方原生 KLayout 批处理已验证；KLayout 窗口、三档缩放、真实点选与命令输入截图仍需完成。自动测试不能替代这些交付门槛。
+合并前已在 D3D12 上实机验收：空白启动布局、三档缩放、终端命令（含真实 CLI 与检查器跑 `legalize`）、KLayout 打开 newblue1 GDS 并核对各图层计数，详见 06 文档 §8.2。
 
 ## 一条命令启动（推荐）
 

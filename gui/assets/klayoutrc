@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 终端 klayout 命令专用（klayout -c 本文件 -t），用来去掉启动时的两个提示窗：
+     full-hierarchy-new-cell 为 false 时会弹「只显示顶层单元」的提示，导出的 GDS 只有一个顶层单元，
+     开启完整层次不改变显示内容；tip-window-hidden 关掉「以查看模式启动」的提示。 -->
+<config>
+ <full-hierarchy-new-cell>true</full-hierarchy-new-cell>
+ <tip-window-hidden>editor-mode=0,only-top-level-shown-by-default=0</tip-window-hidden>
+</config>

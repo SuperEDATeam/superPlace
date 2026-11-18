@@ -95,6 +95,8 @@ add_library(viz_core STATIC
   src/viz/frame_map.cpp
   src/viz/playback.cpp
   src/viz/gds_writer.cpp
+  src/viz/gds_reader.cpp
+  src/viz/child_process.cpp
   src/render/gl_loader.cpp
   src/render/canvas.cpp
   src/app.cpp
@@ -125,6 +127,7 @@ add_executable(viz_tests
   test/test_nets.cpp
   test/test_displacement.cpp
   test/test_gds.cpp
+  test/test_child_process.cpp
   src/viz/bundle_source.cpp
   src/viz/summary.cpp
   src/viz/spatial_index.cpp
@@ -134,6 +137,8 @@ add_executable(viz_tests
   src/viz/frame_map.cpp
   src/viz/playback.cpp
   src/viz/gds_writer.cpp
+  src/viz/gds_reader.cpp
+  src/viz/child_process.cpp
 )
 target_include_directories(viz_tests PRIVATE src)
 target_include_directories(viz_tests SYSTEM PRIVATE ${VIZ_JSON_INC})
@@ -141,6 +146,17 @@ target_compile_definitions(viz_tests PRIVATE
   SYNTHETIC_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/sample-data/synthetic")
 target_link_libraries(viz_tests PRIVATE Threads::Threads)
 add_test(NAME viz_tests COMMAND viz_tests)
+
+# App command logic integration: linked UI code, but no window/context is opened.
+# Keep its executable under a private ROOT/gui/build so fixed output paths cannot
+# touch a user's recorded/demo results.
+add_executable(app_command_tests test/test_app_commands.cpp)
+target_link_libraries(app_command_tests PRIVATE viz_core)
+target_compile_definitions(app_command_tests PRIVATE
+  SYNTHETIC_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/sample-data/synthetic")
+set_target_properties(app_command_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/command-fixture/gui/build")
+add_test(NAME app_command_tests COMMAND app_command_tests)
 
 # ------------------------------------------------------- 目标一：独立查看器
 add_executable(superplace-viz src/main_viz.cpp)

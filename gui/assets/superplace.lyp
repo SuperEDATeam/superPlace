@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-properties>
+ <properties><frame-color>#dc3d3d</frame-color><fill-color>#dc3d3d</fill-color><frame-brightness>0</frame-brightness><fill-brightness>0</fill-brightness><dither-pattern>I0</dither-pattern><visible>true</visible><valid>true</valid><name>标准单元</name><source>1/0@1</source></properties>
+ <properties><frame-color>#f59729</frame-color><fill-color>#f59729</fill-color><frame-brightness>0</frame-brightness><fill-brightness>0</fill-brightness><dither-pattern>I0</dither-pattern><visible>true</visible><valid>true</valid><name>宏</name><source>2/0@1</source></properties>
+ <properties><frame-color>#3d6edc</frame-color><fill-color>#3d6edc</fill-color><frame-brightness>0</frame-brightness><fill-brightness>0</fill-brightness><dither-pattern>I0</dither-pattern><visible>true</visible><valid>true</valid><name>固定块</name><source>3/0@1</source></properties>
+ <properties><frame-color>#707070</frame-color><fill-color>#707070</fill-color><frame-brightness>0</frame-brightness><fill-brightness>0</fill-brightness><dither-pattern>I1</dither-pattern><visible>true</visible><valid>true</valid><name>core 边界</name><source>10/0@1</source></properties>
+</layer-properties>

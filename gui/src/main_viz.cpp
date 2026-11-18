@@ -29,6 +29,8 @@ int main(int argc, char** argv) {
                 "          [--frame N] [--bench N] [--bench-ui N] [--bench-csv FILE]\n"
                 "          [--zoom F] [--center X Y] [--paused] [--no-cull]\n"
                 "          [--screenshot out.ppm] [--shot-after 秒]\n\n"
+                "--ui-scale 取显示器的 Windows 缩放比例：笔记本150%%用1.5（默认），\n"
+                "外接屏125%%用1.25，100%%或投影仪用1.0–1.25；只保证最大化窗口。\n\n"
                 "bundle 由 scripts/make_viz.py 生成，格式见\n"
                 "work_report/06-前端开发方案与接口契约.md\n");
             return 0;

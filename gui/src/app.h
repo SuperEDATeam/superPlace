@@ -64,6 +64,7 @@ public:
     int run();
 
 private:
+    friend struct AppCommandTestAccess;
     bool initWindow();
     void drawUi();
     void drawCanvasPanel(unsigned dockId);
@@ -78,10 +79,16 @@ private:
     // T33：现场布局子进程生命周期。
     void startPlace();
     void stopPlace(bool report);
-    void pollPlace();
+    static double processNow();  // monotonic process timing independent of GLFW init
+    void pollPlace(double now);
     void handleTerminalCommand(const std::string& cmd);
     // T34：把当前显示帧导出 GDSII 到固定路径。
     void exportGds();
+    bool ensureCurrentGds();
+    void showGdsInfo();
+    void launchKlayout();
+    void pollKlayout();
+    void startLegalize();
     // 仓库根目录：可执行文件在 <ROOT>/gui/build/ 下，向上两级推出。
     static std::string repoRoot();
     void gotoFrame(int index);
@@ -93,7 +100,7 @@ private:
 
     // ---- T4：懒重建空间索引（切帧后第一次点选时才建）
     void rebuildIndexIfDirty();
-    void rebuildIndexAtCurrent();   ///< T24：点击时用当前插值位置建索引
+    bool rebuildIndexAtCurrent();  ///< false if the current frame is unavailable
     // ---- T6：懒重建密度场
     void rebuildDensityIfDirty();
     void startPreDensity();          ///< setSource 后起后台线程预计算各关键帧密度
@@ -113,6 +120,10 @@ private:
     bool   geomUploaded_ = false;
     std::string status_, bundlePath_;
     std::string gdsExportMsg_;   ///< 最近一次 GDSII 导出结果（按钮正下方自动换行显示）
+    std::string lastGdsPath_;
+    std::vector<pid_t> klayoutPids_;
+    enum class ProcessTask { Place, Legalize, Check };
+    ProcessTask processTask_ = ProcessTask::Place;
     char pathBuf_[512] = {0};
 
     // ---- T14：连续回放（控制器 + 插值缓冲 + 持帧）

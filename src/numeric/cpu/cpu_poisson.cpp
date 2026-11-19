@@ -45,6 +45,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 #include <vector>
 
@@ -52,6 +53,23 @@ namespace sp {
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
+// Fixed, data-size-only cutoff: pthread dispatch dominates below this size.
+constexpr size_t kMinParallelBins = 256 * 256;
+
+// FFTW 的计划器配置、计划创建/销毁共享全局状态。execute 不持有该锁。
+std::mutex& plannerMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+void initializeThreads() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        if (!fftwf_init_threads())
+            throw std::runtime_error("CpuPoissonBackend: FFTW threads initialization failed");
+    });
+    // 不调用全局 cleanup_threads：它会使其他仍存活实例的计划失效。
+}
 
 class CpuPoissonBackend final : public PoissonBackend {
 public:
@@ -61,12 +79,11 @@ public:
             throw std::runtime_error("CpuPoissonBackend: grid must be at least 2x2");
         if (!(step_x_ > 0.f) || !(step_y_ > 0.f))
             throw std::runtime_error("CpuPoissonBackend: bin step must be positive");
+        if (cfg.fftw_threads < 1)
+            throw std::runtime_error("CpuPoissonBackend: fftw_threads must be positive");
 
         const size_t n = static_cast<size_t>(nx_) * static_cast<size_t>(ny_);
-        buf_in_   = alloc(n);
-        buf_spec_ = alloc(n);
-        buf_work_ = alloc(n);
-        buf_out_  = alloc(n);
+        planThreads_ = n >= kMinParallelBins ? cfg.fftw_threads : 1;
 
         // 频率表预计算，避免每次 solve 重复算三角函数参数
         freq_u_.resize(static_cast<size_t>(nx_));
@@ -80,20 +97,44 @@ public:
         // 不同运行可能选到不同代码路径、浮点舍入随之变化，破坏逐位可复现。
         constexpr unsigned kFlags = FFTW_ESTIMATE | FFTW_UNALIGNED;
 
-        plan_fwd_ = fftwf_plan_r2r_2d(nx_, ny_, buf_in_, buf_spec_,
-                                      FFTW_REDFT10, FFTW_REDFT10, kFlags);
-        plan_cc_  = fftwf_plan_r2r_2d(nx_, ny_, buf_work_, buf_out_,
-                                      FFTW_REDFT01, FFTW_REDFT01, kFlags);   // φ
-        plan_sc_  = fftwf_plan_r2r_2d(nx_, ny_, buf_work_, buf_out_,
-                                      FFTW_RODFT01, FFTW_REDFT01, kFlags);   // ξ_x
-        plan_cs_  = fftwf_plan_r2r_2d(nx_, ny_, buf_work_, buf_out_,
-                                      FFTW_REDFT01, FFTW_RODFT01, kFlags);   // ξ_y
-
-        if (!plan_fwd_ || !plan_cc_ || !plan_sc_ || !plan_cs_)
-            throw std::runtime_error("CpuPoissonBackend: FFTW plan creation failed");
+        std::lock_guard<std::mutex> lock(plannerMutex());
+        initializeThreads();
+        try {
+            buf_in_   = alloc(n);
+            buf_spec_ = alloc(n);
+            buf_work_ = alloc(n);
+            buf_out_  = alloc(n);
+            fftwf_plan_with_nthreads(planThreads_);
+            plan_fwd_ = fftwf_plan_r2r_2d(nx_, ny_, buf_in_, buf_spec_,
+                                        FFTW_REDFT10, FFTW_REDFT10, kFlags);
+            plan_cc_  = fftwf_plan_r2r_2d(nx_, ny_, buf_work_, buf_out_,
+                                        FFTW_REDFT01, FFTW_REDFT01, kFlags);   // φ
+            plan_sc_  = fftwf_plan_r2r_2d(nx_, ny_, buf_work_, buf_out_,
+                                        FFTW_RODFT01, FFTW_REDFT01, kFlags);   // ξ_x
+            plan_cs_  = fftwf_plan_r2r_2d(nx_, ny_, buf_work_, buf_out_,
+                                        FFTW_REDFT01, FFTW_RODFT01, kFlags);   // ξ_y
+            if (!plan_fwd_ || !plan_cc_ || !plan_sc_ || !plan_cs_)
+                throw std::runtime_error("CpuPoissonBackend: FFTW plan creation failed");
+            fftwf_plan_with_nthreads(1);
+            // Prime FFTW's lazy worker pool before the solve() hot path.
+            fftwf_execute(plan_fwd_);
+            fftwf_execute(plan_cc_);
+            fftwf_execute(plan_sc_);
+            fftwf_execute(plan_cs_);
+        } catch (...) {
+            fftwf_plan_with_nthreads(1);
+            releaseUnlocked();
+            throw;
+        }
     }
 
     ~CpuPoissonBackend() override {
+        std::lock_guard<std::mutex> lock(plannerMutex());
+        releaseUnlocked();
+    }
+
+private:
+    void releaseUnlocked() {
         if (plan_fwd_) fftwf_destroy_plan(plan_fwd_);
         if (plan_cc_)  fftwf_destroy_plan(plan_cc_);
         if (plan_sc_)  fftwf_destroy_plan(plan_sc_);
@@ -104,6 +145,7 @@ public:
         fftwf_free(buf_out_);
     }
 
+public:
     void solve(BinGridSpan density, BinGridSpan phi, BinGridSpan field_x,
                BinGridSpan field_y) override {
         checkSpan(density);
@@ -165,6 +207,7 @@ public:
     }
 
     const char* name() const override { return "cpu-fftw"; }
+    int cpuThreads() const override { return planThreads_; }
 
 private:
     static float* alloc(size_t n) {
@@ -180,6 +223,7 @@ private:
     }
 
     int   nx_, ny_;
+    int   planThreads_ = 1;
     float step_x_, step_y_;
 
     std::vector<float> freq_u_, freq_v_;

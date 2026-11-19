@@ -38,6 +38,8 @@ public:
 
     /// 供日志标注实际选中的后端。
     virtual const char* name() const = 0;
+    /// CPU FFT plan worker budget; zero for non-CPU backends.
+    virtual int cpuThreads() const { return 0; }
 
 protected:
     PoissonBackend() = default;
@@ -49,6 +51,7 @@ struct BackendConfig {
     float step_x = 1.f;   // bin 的物理宽度，用于把频域导数换算到物理单位
     float step_y = 1.f;
     bool  prefer_gpu = false;   // 仅 ENABLE_CUDA 构建下有效，拿不到 GPU 时回退 CPU
+    int   fftw_threads = 4;     // 固定的 CPU FFTW 计划线程上限，与 OpenMP 线程数无关
 };
 
 /// 工厂（实现在 poisson_factory.cpp）。默认返回 CpuPoissonBackend；

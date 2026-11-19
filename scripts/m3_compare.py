@@ -52,6 +52,10 @@ def main():
         try:
             b, bm, design, bs, _ = read_run(manifest)
             n, nm, _, ns, log = read_run(a.candidate / rel)
+            # Old manifests predate threading and used serial FFTW.
+            if bs.get('fftw_threads', bm['config'].get('fftw_threads', 1)) != ns.get(
+                    'fftw_threads', nm['config'].get('fftw_threads', 1)):
+                raise ValueError('incomparable config: fftw_threads; rebuild the baseline')
             for key in ['target_density', 'target_overflow', 'cgp_target_overflow',
                         'random_seed', 'gp_bin_dim', 'density_chunks', 'poisson_backend']:
                 if bm['config'].get(key) != nm['config'].get(key):

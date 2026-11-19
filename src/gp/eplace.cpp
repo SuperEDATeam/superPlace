@@ -207,8 +207,10 @@ EPlace::EPlace(PlaceDB& db, const Config& cfg, MetricsSink& sink)
     : impl_(std::make_unique<Impl>(db, cfg, sink)) {
     checkGeometry(db, "GP/initialize", false);
     impl_->grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks,
-                           cfg.poisson_backend == "cuda");
+                           cfg.poisson_backend == "cuda", cfg.fftw_threads);
     sink.setSummary("poisson_backend", impl_->grid.backendName());
+    sink.setSummary("fftw_threads", std::string(impl_->grid.backendName()) == "cpu-fftw" ? cfg.fftw_threads : 0);
+    sink.setSummary("fftw_plan_threads", impl_->grid.fftwPlanThreads());
     impl_->wl.prepare(db);
     impl_->gradWl.assign(static_cast<size_t>(2 * db.numMovable), 0.f);
     impl_->force.assign(static_cast<size_t>(2 * db.totalNodes()), 0.f);

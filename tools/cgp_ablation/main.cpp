@@ -88,7 +88,8 @@ int main(int argc, char** argv) {
                 e.run(sp::GpStage::kFillerOnly);
             }
             sp::BinGrid grid;
-            grid.initialize(trial, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks);
+            grid.initialize(trial, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks,
+                            false, cfg.fftw_threads);
             grid.accumulate(trial);
             auto sum = [](const auto& v) { return std::accumulate(v.begin(), v.end(), 0.0); };
             metrics.setSummary("node_charge", sum(grid.nodeDensity()));

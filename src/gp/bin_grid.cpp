@@ -62,7 +62,7 @@ float BinGrid::chargeWeight(const PlaceDB& db, int i, float footprintScale) cons
 }
 
 void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverride,
-                         int chunks, bool preferGpu) {
+                         int chunks, bool preferGpu, int fftwThreads) {
     targetDensity_ = targetDensity;
     originX_ = db.coreRegion.lx;
     originY_ = db.coreRegion.ly;
@@ -178,6 +178,7 @@ void BinGrid::initialize(const PlaceDB& db, float targetDensity, int binDimOverr
     cfg.step_x = stepX_;
     cfg.step_y = stepY_;
     cfg.prefer_gpu = preferGpu;
+    cfg.fftw_threads = fftwThreads;
     backend_ = makePoissonBackend(cfg);
 
     SP_INFO("bin grid: %dx%d  step (%.4f, %.4f)  backend %s", dim_, dim_, stepX_, stepY_,

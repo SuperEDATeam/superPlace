@@ -28,6 +28,7 @@
   "gp_bin_dim": 0,
   "gp_diagnostics": false,
   "density_chunks": 8,
+  "fftw_threads": 4,
   "poisson_backend": "cpu",
   "ignore_net_degree": 100,
   "delta_hpwl_ref": 350000.0,

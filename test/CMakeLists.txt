@@ -38,6 +38,7 @@ sp_add_test(test_parser)
 sp_add_test(test_csr)
 sp_add_test(test_roundtrip)
 sp_add_test(test_poisson)
+sp_add_test(test_poisson_threads)
 sp_add_test(test_hpwl)
 sp_add_test(test_b2b)
 sp_add_test(test_nesterov)
@@ -108,6 +109,22 @@ endif()
 # RUN_SERIAL：32 线程用例与其他重负载并行跑会让 WSL 满载重启。
 set(SP_GOLDEN_DESIGNS thin1 adaptec1 mms_adaptec1)
 set(SP_GOLDEN_THREADS 1 8 32)
+foreach(design IN LISTS SP_GOLDEN_DESIGNS)
+    file(GLOB aux "${SP_TEST_DATA_DIR}/${design}/*.aux")
+    foreach(t IN LISTS SP_GOLDEN_THREADS)
+        add_test(NAME m3_threaded_golden_${design}_t${t}
+                 COMMAND ${CMAKE_COMMAND}
+                         -DCLI=$<TARGET_FILE:superplace-cli>
+                         -DAUX=${aux}
+                         -DCONFIG=${CMAKE_SOURCE_DIR}/configs/m3/golden-threaded.json
+                         -DTHREADS=${t}
+                         -DOUT=${CMAKE_BINARY_DIR}/m3_threaded_golden/${design}_t${t}
+                         -DEXPECTED=${CMAKE_SOURCE_DIR}/test/golden/m3-threaded/${design}.sha256
+                         -P ${CMAKE_CURRENT_SOURCE_DIR}/golden/run_golden.cmake)
+        set_tests_properties(m3_threaded_golden_${design}_t${t}
+                             PROPERTIES LABELS "golden;m3;fftw" RUN_SERIAL TRUE)
+    endforeach()
+endforeach()
 option(ENABLE_LEGACY_GOLDEN "Register historical 0.07 golden checks" OFF)
 if(ENABLE_LEGACY_GOLDEN)
 foreach(design IN LISTS SP_GOLDEN_DESIGNS)

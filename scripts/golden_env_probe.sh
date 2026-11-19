@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 黄金值跨环境探测：记录编译与运行环境，用几种指令集选项分别构建 superplace-cli，
-# 在三个黄金设计上跑 init,gp，输出 .pl 的 SHA256。把生成的报告发给对方逐行比对。
+# 在三个黄金设计上跑 init,gp，输出 .pl 的完整 64 位 SHA256。把生成的报告发给对方逐行比对。
+# 跨设备一致性须比较完整哈希，不能只用截断前缀确认。
 #
 # 用法（仓库根目录）：scripts/golden_env_probe.sh [--quick]
 #   --quick 只跑 thin1（只走 QP，几秒钟），否则还跑 adaptec1 与 MMS adaptec1（各约半分钟）
@@ -67,9 +68,8 @@ for v in "${VARIANTS[@]}"; do
         echo "  运行 $design"
         OMP_NUM_THREADS=$THREADS "$b/superplace-cli" --aux "$aux" --stage init,gp --config "$CONFIG" \
             --threads $THREADS --no-plot --out "$o" > "$o.log" 2>&1
-        # 输出完整 64 位哈希：严格判断两台机器逐字节一致需要全长，前缀只能用于快速浏览
         printf "%-20s %-13s %s %s\n" "$name" "$design" \
-            "$(sha256sum "$o/$n/$n.init.pl" | cut -c1-64)" "$(sha256sum "$o/$n/$n.gp.pl" | cut -c1-64)" >> "$REPORT"
+            "$(sha256sum "$o/$n/$n.init.pl" | cut -d' ' -f1)" "$(sha256sum "$o/$n/$n.gp.pl" | cut -d' ' -f1)" >> "$REPORT"
     done
 done
 

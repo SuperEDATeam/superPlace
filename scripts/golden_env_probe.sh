@@ -67,8 +67,9 @@ for v in "${VARIANTS[@]}"; do
         echo "  运行 $design"
         OMP_NUM_THREADS=$THREADS "$b/superplace-cli" --aux "$aux" --stage init,gp --config "$CONFIG" \
             --threads $THREADS --no-plot --out "$o" > "$o.log" 2>&1
+        # 输出完整 64 位哈希：严格判断两台机器逐字节一致需要全长，前缀只能用于快速浏览
         printf "%-20s %-13s %s %s\n" "$name" "$design" \
-            "$(sha256sum "$o/$n/$n.init.pl" | cut -c1-16)" "$(sha256sum "$o/$n/$n.gp.pl" | cut -c1-16)" >> "$REPORT"
+            "$(sha256sum "$o/$n/$n.init.pl" | cut -c1-64)" "$(sha256sum "$o/$n/$n.gp.pl" | cut -c1-64)" >> "$REPORT"
     done
 done
 

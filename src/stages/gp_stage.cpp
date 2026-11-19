@@ -140,7 +140,7 @@ void GlobalPlaceStage::run(PlaceDB& db, const Config& cfg, MetricsSink& sink) {
         {
             BinGrid g;
             g.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks,
-                         cfg.poisson_backend == "cuda");
+                         cfg.poisson_backend == "cuda", cfg.fftw_threads);
             g.accumulate(db);
             double sum = 0.0, mx = 0.0;
             size_t k = 0;

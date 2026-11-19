@@ -69,12 +69,12 @@ class GateTests(unittest.TestCase):
         path.write_text(json.dumps(data))
         self.assertNotEqual(self.gate().returncode, 0)
 
-    def test_runner_never_marks_failed_summary_complete_even_if_child_exits_zero(self):
+    def audit_fake_summary(self, summary):
         binary = self.root / 'fake-cli'
         binary.write_text('#!/usr/bin/env python3\nimport sys,json\nfrom pathlib import Path\n'
             'out=Path(sys.argv[sys.argv.index("--out")+1])/"adaptec1"\n'
             'out.mkdir(parents=True,exist_ok=True)\n'
-            '(out/"summary.json").write_text(json.dumps({"run_status":"failed"}))\n')
+            '(out/"summary.json").write_text('+repr(json.dumps(summary))+')\n')
         binary.chmod(0o755)
         bench = self.root / 'bench/ispd2005/adaptec1'
         bench.mkdir(parents=True); (bench / 'adaptec1.aux').write_text('fixture')
@@ -83,13 +83,30 @@ class GateTests(unittest.TestCase):
             '--bench-root', str(self.root/'bench'), '--out', str(out),
             '--config', str(ROOT/'configs/default.json'), '--designs', 'ispd2005/adaptec1'],
             capture_output=True, text=True)
+        return r, out
+
+    def test_runner_never_marks_failed_summary_complete_even_if_child_exits_zero(self):
+        r, out = self.audit_fake_summary({'run_status':'failed'})
         self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertFalse((out/'ispd2005/adaptec1/seed-1002/completed.json').exists())
+
+    def test_runner_rejects_cli_ignoring_fftw_threads(self):
+        r, out = self.audit_fake_summary({'run_status':'completed','fftw_threads':1})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('CLI did not use requested fftw_threads', r.stdout)
         self.assertFalse((out/'ispd2005/adaptec1/seed-1002/completed.json').exists())
 
     def test_missing_candidate_fails(self):
         self.run_pair()
         (self.root / 'candidate/ispd2005/adaptec1/seed-1002/completed.json').unlink()
         self.assertNotEqual(self.gate().returncode, 0)
+
+    def test_fftw_thread_change_needs_new_baseline(self):
+        self.run_pair()
+        p=self.root/'candidate/ispd2005/adaptec1/seed-1002/manifest.json'
+        data=json.loads(p.read_text()); data['config']['fftw_threads']=4
+        p.write_text(json.dumps(data))
+        self.assertIn('incomparable config: fftw_threads', self.gate(changed_stages=['mgp','cgp']).stdout)
 
     def test_rejected_campaign_does_not_launch_more_runs(self):
         out = self.root / 'rejected'

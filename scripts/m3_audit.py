@@ -60,7 +60,8 @@ def main():
             run.mkdir(parents=True, exist_ok=True)
             cfg = dict(config, target_density=DENSITIES[design], target_overflow=.1,
                        cgp_target_overflow=.1, poisson_backend='cpu', random_seed=seed,
-                       num_threads=a.threads, plot=False, full_plot=False, frame_stride=0)
+                       num_threads=a.threads, fftw_threads=config.get('fftw_threads', 4),
+                       plot=False, full_plot=False, frame_stride=0)
             provenance = dict(revision=revision, diff_sha256=hashlib.sha256(diff).hexdigest(),
                               binary_sha256=digest(binary), config=cfg,
                               aux=str(aux.resolve()), threads=a.threads,
@@ -94,13 +95,17 @@ def main():
             valid = False
             if result.returncode == 0 and summary.is_file():
                 try:
-                    valid = json.loads(summary.read_text()).get('run_status') != 'failed'
+                    data = json.loads(summary.read_text())
+                    valid = data.get('run_status') != 'failed'
+                    if valid and data.get('fftw_threads', 1) != cfg['fftw_threads']:
+                        valid = False
+                        status['validation_error'] = 'CLI did not use requested fftw_threads'
                 except (ValueError, OSError):
                     pass
             if valid:
                 done.write_text(json.dumps(status, indent=2) + '\n')
             else:
-                status['validation_error'] = 'nonzero exit or missing/invalid/failed summary'
+                status.setdefault('validation_error', 'nonzero exit or missing/invalid/failed summary')
                 failures += 1
             print(f'END {item} {status}', flush=True)
     return bool(failures)

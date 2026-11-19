@@ -154,7 +154,7 @@ void writeGpDiagnostic(const std::string& root, const std::string& stage,
                     std::max(ylo, db.coreRegion.hy - .5f * db.node_h[i] - 1e-3f));
             }
             BinGrid probe;
-            probe.initialize(trial, cfg.target_density, dim, cfg.density_chunks);
+            probe.initialize(trial, cfg.target_density, dim, cfg.density_chunks, false, cfg.fftw_threads);
             probe.accumulate(trial); probe.solveField();
             probes.push_back({{"direction", direction ? "combined" : "density"},
                 {"fraction_of_bin", fraction}, {"overflow", probe.overflow()}, {"energy", energy(probe)}});
@@ -177,7 +177,8 @@ void diagnoseDelivered(const std::string& root, const std::string& stage,
     int gridDim, const std::vector<int>& optIdx, const std::vector<float>& previous) {
     PlaceDB clone = db;
     BinGrid grid;
-    grid.initialize(clone, cfg.target_density, gridDim, cfg.density_chunks, cfg.poisson_backend == "cuda");
+    grid.initialize(clone, cfg.target_density, gridDim, cfg.density_chunks,
+                    cfg.poisson_backend == "cuda", cfg.fftw_threads);
     grid.accumulate(clone); grid.solveField();
     WaWirelength wl; wl.prepare(clone);
     std::vector<float> grad(2 * clone.numMovable), force(2 * clone.totalNodes());

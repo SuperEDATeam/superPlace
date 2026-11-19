@@ -26,15 +26,11 @@ find_package(Eigen3 3.3 REQUIRED NO_MODULE)   # 稀疏矩阵 + BiCGSTAB（M2 二
 
 # FFTW3 没有官方 CMake config，走 pkg-config（M2'/M3 的 DCT/泊松求解）
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFTW3F IMPORTED_TARGET fftw3f)   # 单精度，与 PlaceDB 的 float 一致
-pkg_check_modules(FFTW3  IMPORTED_TARGET fftw3)
-if(FFTW3F_FOUND)
-  message(STATUS "FFTW3 (single precision) found: ${FFTW3F_VERSION}")
-elseif(FFTW3_FOUND)
-  message(STATUS "FFTW3 (double precision) found: ${FFTW3_VERSION}")
-else()
-  message(WARNING "FFTW3 not found; M2'/M3 will need to vendor Ooura fftsg instead")
-endif()
+pkg_check_modules(FFTW3F REQUIRED IMPORTED_TARGET fftw3f)
+find_package(Threads REQUIRED)
+find_library(FFTW3F_THREADS_LIBRARY NAMES fftw3f_threads
+             HINTS ${FFTW3F_LIBRARY_DIRS} REQUIRED)
+message(STATUS "FFTW3f ${FFTW3F_VERSION}, pthread backend: ${FFTW3F_THREADS_LIBRARY}")
 
 # CUDA 后端（cmake -B build_cuda -DENABLE_CUDA=ON）。架构与标准必须在 enable_language
 # 与建目标之前设好：它们只在目标创建时拷进目标属性。
@@ -89,11 +85,8 @@ target_include_directories(superplace SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/third_pa
 target_link_libraries(superplace PUBLIC OpenMP::OpenMP_CXX PNG::PNG Eigen3::Eigen)
 
 # FFTW 在 M2'（泊松求解器）落地时才会被引用，这里先接好目标，届时无需改动构建
-if(TARGET PkgConfig::FFTW3F)
-  target_link_libraries(superplace PUBLIC PkgConfig::FFTW3F)
-elseif(TARGET PkgConfig::FFTW3)
-  target_link_libraries(superplace PUBLIC PkgConfig::FFTW3)
-endif()
+target_link_libraries(superplace PUBLIC ${FFTW3F_THREADS_LIBRARY}
+                      PkgConfig::FFTW3F Threads::Threads)
 
 # CImg：仅作图像绘制，不开显示后端（无 X11 依赖）
 target_compile_definitions(superplace PUBLIC cimg_display=0 cimg_use_zlib=0)
@@ -117,6 +110,10 @@ endif()
 add_executable(superplace-cli src/main.cpp)
 target_link_libraries(superplace-cli PRIVATE superplace)
 target_compile_options(superplace-cli PRIVATE -Wall -Wextra)
+
+add_executable(superplace-poisson-bench tools/poisson_bench/main.cpp)
+target_link_libraries(superplace-poisson-bench PRIVATE superplace)
+target_compile_options(superplace-poisson-bench PRIVATE -Wall -Wextra)
 
 # 课堂测试 1 的专用输出工具：独立二进制，不影响 superplace-cli 的任何行为
 add_executable(superplace-quiz tools/quiz/main.cpp)

@@ -15,3 +15,7 @@
 更新新集合：`python3 scripts/m3_golden.py --bin <CLI> --update`。
 当前集合检查：`ctest --test-dir <build> -L m3 --output-on-failure`。
 旧集合显式注册：配置 `-DENABLE_LEGACY_GOLDEN=ON` 后使用 `-L legacy`。
+
+2026-11-19：本集合配置已显式固定 `fftw_threads=1`，保留历史串行 FFTW 数值口径及全部哈希。
+默认 FFTW 预算现为 4，其独立配置及黄金位于 `configs/m3/golden-threaded.json` 和
+`test/golden/m3-threaded/`。`ctest -L m3` 现在同时检查两套配置（共 18 项）；`-L fftw` 只检查新配置。

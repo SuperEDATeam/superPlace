@@ -1,6 +1,7 @@
 #include "util/config.h"
 
 #include <fstream>
+#include <limits>
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
@@ -49,6 +50,7 @@ std::string Config::usage() {
         "  --init-method <m>   random | cluster_fc | cluster_bc | quadratic\n"
         "  --seed <n>          Random seed (default: 1002)\n"
         "  --threads <n>       OpenMP thread count (0 = auto)\n"
+        "  --fftw-threads <n>  Fixed FFTW plan thread limit (default: 4)\n"
         "  --no-plot           Disable image output\n"
         "  --full-plot         Emit an image every iteration\n"
         "  --frame-stride <n>  Record positions every n GP iterations into a viz bundle\n"
@@ -91,6 +93,14 @@ void Config::loadJson(const std::string& path) {
     get("gp_bin_dim", gp_bin_dim);
     get("gp_diagnostics", gp_diagnostics);
     get("density_chunks", density_chunks);
+    if (j.contains("fftw_threads")) {
+        const auto& value = j.at("fftw_threads");
+        if (!value.is_number_integer() || value.get<double>() < 1 ||
+            value.get<double>() > std::numeric_limits<int>::max())
+            throw std::runtime_error("fftw_threads must be a positive int");
+    }
+    get("fftw_threads", fftw_threads);
+    if (fftw_threads < 1) throw std::runtime_error("fftw_threads must be positive");
     get("poisson_backend", poisson_backend);
     if (poisson_backend != "cpu" && poisson_backend != "cuda")
         throw std::runtime_error("poisson_backend must be \"cpu\" or \"cuda\", got \"" +
@@ -158,6 +168,14 @@ Config Config::fromArgs(int argc, char** argv) {
             cfg.random_seed = std::stoull(need(i, "--seed")); ++i; cliSet.insert("random_seed");
         } else if (a == "--threads") {
             cfg.num_threads = std::stoi(need(i, "--threads")); ++i; cliSet.insert("num_threads");
+        } else if (a == "--fftw-threads") {
+            const std::string value = need(i, "--fftw-threads"); ++i;
+            size_t parsed = 0;
+            try { cfg.fftw_threads = std::stoi(value, &parsed); }
+            catch (const std::exception&) { throw std::runtime_error("invalid --fftw-threads"); }
+            if (parsed != value.size() || cfg.fftw_threads < 1)
+                throw std::runtime_error("--fftw-threads must be a positive integer");
+            cliSet.insert("fftw_threads");
         } else if (a == "--no-plot") {
             cfg.plot = false;  cliSet.insert("plot");
         } else if (a == "--full-plot") {
@@ -182,6 +200,7 @@ Config Config::fromArgs(int argc, char** argv) {
         if (cliSet.count("stages"))       fromFile.stages       = cfg.stages;
         if (cliSet.count("random_seed"))  fromFile.random_seed  = cfg.random_seed;
         if (cliSet.count("num_threads"))  fromFile.num_threads  = cfg.num_threads;
+        if (cliSet.count("fftw_threads")) fromFile.fftw_threads = cfg.fftw_threads;
         if (cliSet.count("plot"))         fromFile.plot         = cfg.plot;
         if (cliSet.count("full_plot"))    fromFile.full_plot    = cfg.full_plot;
         if (cliSet.count("frame_stride")) fromFile.frame_stride = cfg.frame_stride;

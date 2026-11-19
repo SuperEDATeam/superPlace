@@ -16,11 +16,12 @@ class PlaceDB;
 
 class BinGrid {
 public:
+    int fftwPlanThreads() const { return backend_ ? backend_->cpuThreads() : 0; }
     /// 初始化网格并预计算静态密度项。binDimOverride > 0 时跳过自动推算。
     /// chunks 为密度累加的局部网格块数（见 Config::density_chunks），<=0 取默认 8。
     /// preferGpu 请求 CUDA 泊松后端（见 Config::poisson_backend），拿不到时回退 CPU 并告警。
     void initialize(const PlaceDB& db, float targetDensity, int binDimOverride = 0,
-                    int chunks = 0, bool preferGpu = false);
+                    int chunks = 0, bool preferGpu = false, int fftwThreads = 4);
 
     /// 统计可移动节点与 filler 的密度贡献（每轮调用）。
     void accumulate(const PlaceDB& db);

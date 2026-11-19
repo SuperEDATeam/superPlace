@@ -55,7 +55,8 @@ void finish(sp::PlaceDB& db, const sp::Config& cfg, sp::MetricsSink& sink,
             fixedX.push_back(db.node_x[i]); fixedY.push_back(db.node_y[i]);
         }
         sp::BinGrid grid;
-        grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks);
+        grid.initialize(db, cfg.target_density, cfg.gp_bin_dim, cfg.density_chunks,
+                        false, cfg.fftw_threads);
         grid.accumulate(db);
         sink.setSummary("mlg_overflow_after", grid.overflow());
         sink.setSummary("mlg_macro_disp_mean", sum / macros.size());
